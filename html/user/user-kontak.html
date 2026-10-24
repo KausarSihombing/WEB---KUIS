@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kontak Saya - FreeBuff Quiz</title>
+    <link rel="stylesheet" href="../css/user.css">
+</head>
+<body>
+    <!-- Banner Utama -->
+    <header class="hero-banner">
+        <div class="container">
+            <h1>Selamat datang di quizz Sibling Solid</h1>
+            <p>Kausar Sihombing sebagai Lead Instruktur</p>
+        </div>
+    </header>
+
+    <!-- Navigasi -->
+    <nav class="navbar user-nav">
+        <div class="logo">
+            <span>FreeBuff Quiz</span>
+        </div>
+        <ul class="nav-links">
+            <li><a href="user-beranda.html">Beranda</a></li>
+            <li><a href="user-kuis.html">Kuis</a></li>
+            <li><a href="user-tentang.html">Tentang</a></li>
+            <li><a href="user-kontak.html">Kontak</a></li>
+        </ul>
+        <div class="nav-actions">
+            <button id="accountBtn" class="btn-account">Account</button>
+        </div>
+    </nav>
+
+    <!-- Konten Kontak -->
+    <main class="container">
+        <section class="contact-section">
+            <div class="contact-content">
+                <h2>Kontak Saya</h2>
+                
+                <div class="contact-methods">
+                    <div method-card>
+                        <div method-icon>📧</div>
+                        <h3>Email</h3>
+                        <p>support@freebuffquiz.com</p>
+                    </div>
+                    
+                    <div method-card>
+                        <div method-icon>💬</div>
+                        <h3>Media Sosial</h3>
+                        <p>Ikuti kami di: @FreeBuffQuiz</p>
+                    </div>
+                    
+                    <div method-card>
+                        <div method-icon>📍</div>
+                        <h3>Alamat</h3>
+                        <p>Jakarta, Indonesia</p>
+                    </div>
+                </div>
+                
+                <form class="contact-form">
+                    <h3> Kirim Pesan</h3>
+                    <div class="form-group">
+                        <input type="text" placeholder="Nama Anda" required>
+                    </div>
+                    <div class="form-group">
+                        <input type="email" placeholder="Email" required>
+                    </div>
+                    <div class="form-group">
+                        <textarea rows="4" placeholder="Pesan Anda"></textarea>
+                    </div>
+                    <button type="submit" class="btn-submit">Kirim</button>
+                </form>
+            </div>
+        </section>
+    </main>
+
+    <script src="../js/auth.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            auth.initAuth();
+        });
+    </script>
+</body>
+</html>

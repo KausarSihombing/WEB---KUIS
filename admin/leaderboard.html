@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Leaderboard — Kuis Bahasa C</title>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" id="sidebar"></aside>
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+    <div class="main">
+      <header class="topbar">
+        <button class="hamburger" id="sidebarToggle" aria-label="Buka menu"><span></span><span></span><span></span></button>
+        <div>
+          <h1 id="pageTitle">Leaderboard</h1>
+          <div class="sub" id="pageSub">Peringkat lengkap setelah kuis diakhiri</div>
+        </div>
+        <div class="topbar-actions">
+          <button class="btn btn-sm" id="exportBtn" type="button" disabled>⇩ Export CSV</button>
+        </div>
+      </header>
+
+      <main class="content">
+        <div class="page-head">
+          <div>
+            <h2>Peringkat Kuis</h2>
+            <p>Nilai dihitung sekali oleh server saat kuis diakhiri.</p>
+          </div>
+          <div class="page-actions">
+            <select class="select" id="quizSelect" style="min-width:240px" aria-label="Pilih kuis"></select>
+          </div>
+        </div>
+
+        <div id="leaderboardArea">
+          <div class="loading-block"><span class="spinner"></span><span>Memuat leaderboard...</span></div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script type="module">
+    import { requireAuth } from '../js/auth.js';
+    import { listQuizzes, getLeaderboardWithTiming } from '../js/admin.js';
+    import {
+      $, mountShell, toast, escapeHtml, formatDate, formatDuration, round,
+      emptyState, loadingState, downloadCsv,
+    } from '../js/ui.js';
+
+    let quizzes = [];
+    let activeQuiz = null;
+    let rows = [];
+
+    const profile = await requireAuth('admin');
+    if (profile) {
+      mountShell({ profile, role: 'admin', active: 'leaderboard', title: 'Leaderboard', subtitle: 'Peringkat lengkap setelah kuis diakhiri' });
+      $('#quizSelect').addEventListener('change', (event) => {
+        const url = new URL(location.href);
+        url.searchParams.set('id', event.target.value);
+        history.replaceState({}, '', url);
+        loadSelected(event.target.value);
+      });
+      $('#exportBtn').addEventListener('click', exportCsv);
+      init();
+    }
+
+    async function init() {
+      try {
+        const all = await listQuizzes();
+        quizzes = all.filter((q) => q.status === 'selesai');
+
+        if (!quizzes.length) {
+          $('#quizSelect').innerHTML = '<option value="">Belum ada kuis selesai</option>';
+          $('#leaderboardArea').innerHTML = `<div class="panel">${emptyState('♛', 'Belum ada leaderboard', 'Leaderboard muncul setelah kamu menekan AKHIRI KUIS di halaman live.')}</div>`;
+          return;
+        }
+
+        const urlId = new URLSearchParams(location.search).get('id');
+        activeQuiz = quizzes.find((q) => q.id === urlId) ?? quizzes[0];
+
+        $('#quizSelect').innerHTML = quizzes.map((q) => `
+          <option value="${q.id}" ${q.id === activeQuiz.id ? 'selected' : ''}>${escapeHtml(q.title)}</option>
+        `).join('');
+
+        await loadSelected(activeQuiz.id);
+      } catch (error) {
+        toast(error.message, 'error');
+        $('#leaderboardArea').innerHTML = `<div class="panel">${emptyState('⚠️', 'Gagal memuat leaderboard', error.message)}</div>`;
+      }
+    }
+
+    async function loadSelected(quizId) {
+      activeQuiz = quizzes.find((q) => q.id === quizId) ?? quizzes[0];
+      $('#leaderboardArea').innerHTML = loadingState('Menghitung peringkat...');
+      $('#exportBtn').disabled = true;
+
+      try {
+        rows = await getLeaderboardWithTiming(activeQuiz.id, activeQuiz.started_at);
+        rows = rows.sort((a, b) => (a.rank ?? 999) - (b.rank ?? 999));
+        render();
+      } catch (error) {
+        toast(error.message, 'error');
+        $('#leaderboardArea').innerHTML = `<div class="panel">${emptyState('⚠️', 'Gagal memuat data', error.message)}</div>`;
+      }
+    }
+
+    function render() {
+      if (!rows.length) {
+        $('#leaderboardArea').innerHTML = `
+          <div class="panel">
+            <div class="panel-head">
+              <div><h3>${escapeHtml(activeQuiz.title)}</h3><p>Selesai ${formatDate(activeQuiz.ended_at)}</p></div>
+            </div>
+            ${emptyState('👥', 'Kuis tanpa peserta', 'Tidak ada peserta yang mengikuti kuis ini.')}
+          </div>`;
+        return;
+      }
+
+      const scoreValues = rows.map((r) => Number(r.score ?? 0));
+      const avg = scoreValues.reduce((a, b) => a + b, 0) / scoreValues.length;
+      const top = Math.max(...scoreValues);
+      const first = rows.find((r) => r.rank === 1) ?? rows[0];
+      const second = rows.find((r) => r.rank === 2) ?? null;
+      const third = rows.find((r) => r.rank === 3) ?? null;
+      const rest = rows.filter((r) => ![1, 2, 3].includes(r.rank));
+
+      $('#exportBtn').disabled = false;
+
+      $('#leaderboardArea').innerHTML = `
+        <div class="podium-panel">
+          <div class="podium-head">
+            <span class="eyebrow">Hasil akhir</span>
+            <h2>${escapeHtml(activeQuiz.title)}</h2>
+            <p>Diakhiri ${formatDate(activeQuiz.ended_at)} · ${rows.length} peserta</p>
+          </div>
+
+          <div class="podium">
+            ${podiumPlace(second, 2, '🐨')}
+            ${podiumPlace(first, 1, '🦉')}
+            ${podiumPlace(third, 3, '🐹')}
+          </div>
+
+          ${rest.length ? `
+            <div class="rank-list">
+              ${rest.map((row) => `
+                <div class="rank-item">
+                  <span class="no">#${row.rank ?? '—'}</span>
+                  <span class="who">${escapeHtml(row.full_name)}</span>
+                  <span class="meta">${row.score} poin · ${row.correct_count} benar</span>
+                </div>
+              `).join('')}
+            </div>` : ''}
+        </div>
+
+        <div class="stat-grid" style="margin-top:18px">
+          <div class="stat"><div class="top"><span class="label">Total Peserta</span></div><div class="value">${rows.length}</div></div>
+          <div class="stat"><div class="top"><span class="label">Rata-rata Nilai</span></div><div class="value">${round(avg)}</div></div>
+          <div class="stat"><div class="top"><span class="label">Nilai Tertinggi</span></div><div class="value">${top}</div></div>
+          <div class="stat"><div class="top"><span class="label">Total Soal</span></div><div class="value">${Math.max(...rows.map((r) => (r.correct_count ?? 0) + (r.wrong_count ?? 0)), 0)}</div></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <div><h3>Peringkat Lengkap</h3><p>Nilai, benar/salah, dan waktu pengerjaan</p></div>
+            <span class="badge">${rows.length} peserta</span>
+          </div>
+          <div class="panel-body tight">
+            <div class="table-wrap">
+              <table class="data">
+                <thead>
+                  <tr>
+                    <th>Rank</th><th>Nama</th><th>NIM / Kelas</th>
+                    <th>Nilai</th><th>Benar</th><th>Salah</th><th>Waktu</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${rows.map((row) => `
+                    <tr>
+                      <td><span class="badge ${row.rank === 1 ? 'badge-berjalan' : ''}">#${row.rank ?? '—'}</span></td>
+                      <td class="name">${escapeHtml(row.full_name)}</td>
+                      <td class="sub">${escapeHtml(row.nim_kelas)}</td>
+                      <td><strong>${row.score}</strong></td>
+                      <td>${row.correct_count}</td>
+                      <td>${row.wrong_count}</td>
+                      <td class="nowrap sub">${formatDuration(row.duration_ms)}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function podiumPlace(row, place, mascot) {
+      const labels = { 1: 'Juara 1', 2: 'Juara 2', 3: 'Juara 3' };
+      return `
+        <div class="podium-place ${place === 1 ? 'first' : place === 2 ? 'second' : 'third'}">
+          <div class="podium-mascot">
+            ${place === 1 ? '<span class="podium-crown">👑</span>' : ''}
+            ${mascot}
+          </div>
+          <div class="podium-name">${escapeHtml(row?.full_name ?? '—')}</div>
+          <div class="podium-block">
+            <div class="num">${place}</div>
+            <div class="label">${labels[place]}</div>
+          </div>
+        </div>`;
+    }
+
+    function exportCsv() {
+      if (!rows.length) return;
+      downloadCsv(
+        `leaderboard-${activeQuiz.title.toLowerCase().replace(/[^\w]+/g, '-')}.csv`,
+        ['Rank', 'Nama', 'NIM/Kelas', 'Nilai', 'Benar', 'Salah', 'Waktu (menit)'],
+        rows.map((row) => [
+          row.rank ?? '',
+          row.full_name,
+          row.nim_kelas,
+          row.score,
+          row.correct_count,
+          row.wrong_count,
+          row.duration_ms ? (row.duration_ms / 60000).toFixed(1) : '',
+        ]),
+      );
+      toast('CSV diunduh.');
+    }
+  </script>
+</body>
+</html>

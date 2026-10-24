@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Masuk — Kuis Bahasa C</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="auth-page">
+    <aside class="auth-side">
+      <a class="brand" href="index.html" style="text-decoration:none">
+        <span class="brand-mark">C</span>
+        <span class="brand-text">Kuis Bahasa C<small>Learn · Code · Compete</small></span>
+      </a>
+      <div>
+        <span class="eyebrow" style="color:#86efac">Selamat datang kembali</span>
+        <h2>Masuk, lalu tunggu instruktur memulai kuis.</h2>
+        <p>Satu akun untuk semuanya: riwayat kuis tersimpan, materi bisa dibaca kapan saja, dan peringkat tampil setelah kuis selesai.</p>
+        <div class="auth-points">
+          <div class="auth-point"><i>✓</i><span>Jawaban tersimpan otomatis setiap kamu memilih opsi.</span></div>
+          <div class="auth-point"><i>✓</i><span>Timer mengikuti server dan ikut berubah saat durasi diubah.</span></div>
+          <div class="auth-point"><i>✓</i><span>Instruktur dan peserta masuk lewat pintu yang sama.</span></div>
+        </div>
+      </div>
+      <span class="tiny" style="color:#86efac;position:relative;z-index:1">© 2026 Kuis Bahasa C</span>
+    </aside>
+
+    <main class="auth-main">
+      <div class="auth-card">
+        <h1>Masuk ke akun</h1>
+        <p class="sub">Gunakan email dan password yang kamu daftarkan.</p>
+
+        <div id="formError" class="form-error hidden" style="margin-top:20px"></div>
+
+        <form class="auth-form" id="loginForm" novalidate>
+          <div class="field">
+            <label for="email">Email</label>
+            <input class="input" type="email" id="email" name="email" placeholder="nama@email.com" autocomplete="email" required>
+          </div>
+          <div class="field">
+            <label for="password">Password</label>
+            <input class="input" type="password" id="password" name="password" placeholder="••••••••" autocomplete="current-password" required>
+          </div>
+          <button class="btn btn-primary btn-block btn-lg" type="submit" id="submitBtn">Masuk</button>
+        </form>
+
+        <p class="auth-foot">Belum punya akun? <a href="register.html">Daftar sebagai peserta</a></p>
+        <div class="auth-note">
+          <strong>Catatan:</strong> akun instruktur dibuat manual oleh pemilik project lewat Supabase.
+          Pendaftaran publik selalu menjadi akun peserta.
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script type="module">
+    import { signIn, redirectIfAuthenticated, friendlyAuthError } from './js/auth.js';
+    import { isConfigured, CONFIG_HINT } from './js/supabase.js';
+    import { $, setBusy } from './js/ui.js';
+
+    const form = $('#loginForm');
+    const errorBox = $('#formError');
+    const submitBtn = $('#submitBtn');
+
+    function showError(message) {
+      errorBox.textContent = message;
+      errorBox.classList.remove('hidden');
+    }
+
+    function hideError() {
+      errorBox.classList.add('hidden');
+    }
+
+    const params = new URLSearchParams(location.search);
+    const code = params.get('error');
+    const presetErrors = {
+      config: CONFIG_HINT,
+      profile: 'Profil akun tidak ditemukan. Hubungi instruktur.',
+      inactive: 'Akun ini dinonaktifkan oleh instruktur.',
+    };
+    if (code && presetErrors[code]) showError(presetErrors[code]);
+    if (!isConfigured) showError(CONFIG_HINT);
+
+    await redirectIfAuthenticated();
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      hideError();
+
+      const email = $('#email').value.trim();
+      const password = $('#password').value;
+
+      if (!email || !password) {
+        showError('Email dan password wajib diisi.');
+        return;
+      }
+
+      setBusy(submitBtn, true, 'Memeriksa...');
+      try {
+        const profile = await signIn(email, password);
+        location.href = profile.role === 'admin' ? 'admin/dashboard.html' : 'peserta/home.html';
+      } catch (error) {
+        showError(friendlyAuthError(error.message));
+        setBusy(submitBtn, false);
+      }
+    });
+  </script>
+</body>
+</html>

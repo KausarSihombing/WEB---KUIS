@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Daftar Peserta — Kuis Bahasa C</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="auth-page">
+    <aside class="auth-side">
+      <a class="brand" href="index.html" style="text-decoration:none">
+        <span class="brand-mark">C</span>
+        <span class="brand-text">Kuis Bahasa C<small>Learn · Code · Compete</small></span>
+      </a>
+      <div>
+        <span class="eyebrow" style="color:#86efac">Akun peserta</span>
+        <h2>Belajar C, ukur kemampuan, lihat posisimu.</h2>
+        <p>Daftar sekali untuk mengikuti semua kuis yang token-nya kamu terima dari instruktur.</p>
+        <div class="auth-points">
+          <div class="auth-point"><i>1</i><span>Isi nama lengkap dan NIM/kelas agar mudah dikenali instruktur.</span></div>
+          <div class="auth-point"><i>2</i><span>Masukkan token kuis di menu Ikuti Kuis saat instruktur membuka pendaftaran.</span></div>
+          <div class="auth-point"><i>3</i><span>Riwayat dan peringkat kuis tersimpan di beranda akunmu.</span></div>
+        </div>
+      </div>
+      <span class="tiny" style="color:#86efac;position:relative;z-index:1">© 2026 Kuis Bahasa C</span>
+    </aside>
+
+    <main class="auth-main">
+      <div class="auth-card">
+        <h1>Buat akun peserta</h1>
+        <p class="sub">Gratis dan hanya butuh satu menit.</p>
+
+        <div id="formError" class="form-error hidden" style="margin-top:20px"></div>
+        <div id="successBox" class="auth-note hidden" style="margin-top:20px"></div>
+
+        <form class="auth-form" id="registerForm" novalidate>
+          <div class="field">
+            <label for="fullName">Nama lengkap</label>
+            <input class="input" type="text" id="fullName" name="fullName" placeholder="Contoh: Aulia Rahma" autocomplete="name" required>
+          </div>
+          <div class="field">
+            <label for="nimKelas">NIM / Kelas</label>
+            <input class="input" type="text" id="nimKelas" name="nimKelas" placeholder="Contoh: 2310512034 / TI-3A" autocomplete="off" required>
+          </div>
+          <div class="field">
+            <label for="email">Email</label>
+            <input class="input" type="email" id="email" name="email" placeholder="nama@email.com" autocomplete="email" required>
+          </div>
+          <div class="form-grid">
+            <div class="field">
+              <label for="password">Password</label>
+              <input class="input" type="password" id="password" name="password" placeholder="Min. 6 karakter" autocomplete="new-password" required>
+            </div>
+            <div class="field">
+              <label for="confirmPassword">Ulangi password</label>
+              <input class="input" type="password" id="confirmPassword" name="confirmPassword" placeholder="Ulangi password" autocomplete="new-password" required>
+            </div>
+          </div>
+          <button class="btn btn-primary btn-block btn-lg" type="submit" id="submitBtn">Daftar sekarang</button>
+        </form>
+
+        <p class="auth-foot">Sudah punya akun? <a href="login.html">Masuk di sini</a></p>
+        <div class="auth-note">
+          Akun instruktur tidak dibuat lewat halaman ini. Instruktur dibuat manual oleh pemilik project di Supabase.
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script type="module">
+    import { signUp, redirectIfAuthenticated, homeFor } from './js/auth.js';
+    import { isConfigured, CONFIG_HINT } from './js/supabase.js';
+    import { $, setBusy } from './js/ui.js';
+
+    const form = $('#registerForm');
+    const errorBox = $('#formError');
+    const successBox = $('#successBox');
+    const submitBtn = $('#submitBtn');
+
+    function showError(message) {
+      successBox.classList.add('hidden');
+      errorBox.textContent = message;
+      errorBox.classList.remove('hidden');
+    }
+
+    function hideError() {
+      errorBox.classList.add('hidden');
+    }
+
+    if (!isConfigured) showError(CONFIG_HINT);
+    await redirectIfAuthenticated();
+
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      hideError();
+
+      const fullName = $('#fullName').value.trim();
+      const nimKelas = $('#nimKelas').value.trim();
+      const email = $('#email').value.trim();
+      const password = $('#password').value;
+      const confirmPassword = $('#confirmPassword').value;
+
+      if (!fullName || !nimKelas || !email || !password) {
+        showError('Semua kolom wajib diisi.');
+        return;
+      }
+      if (password.length < 6) {
+        showError('Password minimal 6 karakter.');
+        return;
+      }
+      if (password !== confirmPassword) {
+        showError('Konfirmasi password tidak sama.');
+        return;
+      }
+
+      setBusy(submitBtn, true, 'Membuat akun...');
+      try {
+        const result = await signUp({ fullName, nimKelas, email, password });
+
+        if (result.needsConfirmation) {
+          form.classList.add('hidden');
+          successBox.innerHTML = '<strong>Akun berhasil dibuat.</strong><br>Email konfirmasi telah dikirim. Buka tautan di email tersebut, lalu <a href="login.html">masuk</a>.';
+          successBox.classList.remove('hidden');
+          return;
+        }
+
+        location.href = homeFor(result.profile);
+      } catch (error) {
+        showError(error.message);
+        setBusy(submitBtn, false);
+      }
+    });
+  </script>
+</body>
+</html>

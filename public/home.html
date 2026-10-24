@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FreeBuff Quiz - Quizz Sibling Solid</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="logo">
+            <span>FreeBuff Quiz</span>
+        </div>
+        <ul class="nav-links">
+            <li><a href="#home" class="active">Beranda</a></li>
+            <li><a href="#about">Tentang Kami</a></li>
+            <li><a href="#contact">Kontak</a></li>
+        </ul>
+        <div class="nav-actions">
+            <button id="loginBtn" class="btn-login">Login</button>
+            <button id="registerBtn" class="btn-register">Daftar</button>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <header class="hero" id="home">
+        <div class="hero-content">
+            <h1>Selamat Datang di <span class="highlight">Quizz Sibling Solid</span></h1>
+            <div class="instructor-info">
+                <p>Nama: Kausar Sihombing</p>
+                <p>Amathul zeehan sebagai lead instruktur</p>
+            </div>
+            <p>Kuasai Operator dan Percabangan di Java melalui quiz interaktif</p>
+            <a href="#features" class="btn-primary">Mulai Belajar</a>
+        </div>
+    </header>
+
+    <!-- Features Section -->
+    <section class="features" id="features">
+        <div class="container">
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="card-icon">📚</div>
+                    <h3>Materi Komprehensif</h3>
+                    <p>Pelajari operator dan percabangan dengan contoh interaktif</p>
+                </div>
+                <div class="feature-card">
+                    <div class="card-icon">🎮</div>
+                    <h3>Quiz Interaktif</h3>
+                    <p>Uji pemahamanmu dengan soal pilihan ganda</p>
+                </div>
+                <div class="feature-card">
+                    <div class="card-icon">📊</div>
+                    <h3>Papan Peringkat</div>
+                    <p>Lihat rankingmu vs pengguna lain</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- About Section -->
+    <section class="about" id="about">
+        <div class="container">
+            <h2>Tentang Kami</h2>
+            <div class="about-content">
+                <div class="about-text">
+                    <p>FreeBuff Quiz adalah platform pembelajaran interaktif yang dirancang untuk membantu mahasiswa dan pengembang memahami konsep pemrograman Java dengan cara yang menyenangkan dan efektif. Kami menyediakan berbagai soal tentang operator, percabangan, dan topik-topik lainnya.</p>
+                    <p>Dengan antarmuka yang modern dan animasi yang menarik, proses belajar menjadi lebih menyenangkan dan tidak membosankan.</p>
+                </div>
+                <div class="about-image">
+                    <div style="background: var(--card-bg); padding: 2rem; border-radius: 15px; text-align: center;">
+                        <h3>Kami</h3>
+                        <p>Dibangun oleh tim pengembang dedikasi</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Contact Section -->
+    <section class="contact" id="contact">
+        <div class="container">
+            <h2>Kontak Kami</h2>
+            <div class="contact-content">
+                <div class="contact-info">
+                    <h3>Email</h3>
+                    <p>support@freebuffquiz.com</p>
+                    <h3>Media Sosial</h3>
+                    <p>Ikuti kami di Twitter @FreeBuffQuiz</p>
+                </div>
+                <form class="contact-form">
+                    <div class="form-group">
+                        <input type="text" placeholder="Nama Anda">
+                    </div>
+                    <div class="form-group">
+                        <input type="email" placeholder="Email">
+                    </div>
+                    <div class="form-group">
+                        <textarea placeholder="Pesan"></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Kirim Pesan</button>
+                </form>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <div class="container">
+            <p>&copy; 2026 FreeBuff Quiz. Dibuat dengan ❤️ untuk belajar Java.</p>
+            <p>All rights reserved.</p>
+        </div>
+    </footer>
+
+    <!-- Modal Login -->
+    <div id="loginModal" class="modal">
+        <div class="modal-content">
+            <span class="close-btn">&times;</span>
+            <h2>Login</h2>
+            <form id="loginForm">
+                <div class="form-group">
+                    <input type="email" id="loginEmail" required>
+                    <label>Email</label>
+                </div>
+                <div class="form-group">
+                    <input type="password" id="loginPassword" required>
+                    <label>Password</label>
+                </div>
+                <button type="submit" class="btn btn-block btn-primary">Masuk</button>
+            </form>
+            <p class="modal-divider">atau</p>
+            <button class="btn btn-block btn-google">Masuk dengan Google</button>
+        </div>
+    </div>
+
+    <!-- Modal Register -->
+    <div id="registerModal" class="modal">
+        <div class="modal-content">
+            <span class="close-btn">&times;</span>
+            <h2>Daftar</h2>
+            <form id="registerForm">
+                <div class="form-group">
+                    <input type="text" id="registerName" required>
+                    <label>Nama Lengkap</label>
+                </div>
+                <div class="form-group">
+                    <input type="email" id="registerEmail" required>
+                    <label>Email</label>
+                </div>
+                <div class="form-group">
+                    <input type="password" id="registerPassword" required>
+                    <label>Password</label>
+                </div>
+                <button type="submit" class="btn btn-block btn-primary">Daftar</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>

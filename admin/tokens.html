@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Token Akses — Kuis Bahasa C</title>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" id="sidebar"></aside>
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+    <div class="main">
+      <header class="topbar">
+        <button class="hamburger" id="sidebarToggle" aria-label="Buka menu"><span></span><span></span><span></span></button>
+        <div>
+          <h1 id="pageTitle">Token Akses</h1>
+          <div class="sub" id="pageSub">Kunci masuk untuk setiap kuis</div>
+        </div>
+        <div class="topbar-actions">
+          <a class="btn btn-sm" href="quiz.html">Manajemen Kuis</a>
+        </div>
+      </header>
+
+      <main class="content">
+        <div class="page-head">
+          <div>
+            <h2>Token Kuis</h2>
+            <p>Token 6 karakter hanya untuk mengikuti kuis — peserta tetap wajib login dengan akunnya.</p>
+          </div>
+          <div class="page-actions">
+            <select class="select" id="quizSelect" style="min-width:230px" aria-label="Pilih kuis"></select>
+          </div>
+        </div>
+
+        <div id="quizInfo" class="hidden" style="margin-bottom:16px"></div>
+
+        <div class="grid-2">
+          <div class="panel">
+            <div class="panel-head">
+              <div><h3>Daftar Token</h3><p id="tokenSummary">—</p></div>
+              <button class="btn btn-sm btn-primary" id="generateBtn" type="button">+ Generate Token</button>
+            </div>
+            <div class="panel-body" id="tokenList">
+              <div class="loading-block"><span class="spinner"></span><span>Memuat token...</span></div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <div><h3>Pemakaian Token</h3><p>Peserta yang sudah masuk ke kuis ini</p></div>
+              <span class="badge" id="usageCount">0 peserta</span>
+            </div>
+            <div class="panel-body tight" id="usageList">
+              <div class="loading-block"><span class="spinner"></span><span>Memuat peserta...</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel" style="margin-top:18px">
+          <div class="panel-head"><h3>Catatan keamanan</h3></div>
+          <div class="panel-body small muted">
+            Token bukan pengganti login. Membagikan kode kuis hanya memberi akses masuk ke ruang tunggu.
+            Semua aksi penting (join, simpan jawaban, mulai, ubah durasi, akhiri kuis) divalidasi di server melalui RPC.
+            Nonaktifkan token bila kuis sudah tidak boleh diikuti.
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script type="module">
+    import { requireAuth } from '../js/auth.js';
+    import {
+      listQuizzes, listTokens, createToken, setTokenActive,
+      deleteToken, listTokenUsage,
+    } from '../js/admin.js';
+    import {
+      $, $$, mountShell, toast, statusBadge, escapeHtml, formatDate,
+      emptyState, loadingState,
+    } from '../js/ui.js';
+
+    let quizzes = [];
+    let activeQuizId = null;
+    let activeQuiz = null;
+    let usage = [];
+
+    const profile = await requireAuth('admin');
+    if (profile) {
+      mountShell({ profile, role: 'admin', active: 'tokens', title: 'Token Akses', subtitle: 'Kunci masuk untuk setiap kuis' });
+      $('#quizSelect').addEventListener('change', async (event) => {
+        activeQuizId = event.target.value;
+        const url = new URL(location.href);
+        url.searchParams.set('quiz', activeQuizId);
+        history.replaceState({}, '', url);
+        await loadQuiz();
+      });
+      $('#generateBtn').addEventListener('click', generateToken);
+      bindListEvents();
+      await init();
+    }
+
+    async function init() {
+      try {
+        quizzes = await listQuizzes();
+        if (!quizzes.length) {
+          $('#quizSelect').innerHTML = '<option>Tidak ada kuis</option>';
+          $('#tokenList').innerHTML = emptyState('🗂️', 'Belum ada kuis', 'Buat kuis terlebih dahulu di Manajemen Kuis.');
+          $('#usageList').innerHTML = emptyState('👥', 'Belum ada peserta');
+          $('#generateBtn').disabled = true;
+          return;
+        }
+
+        const urlQuiz = new URLSearchParams(location.search).get('quiz');
+        activeQuiz = quizzes.find((q) => q.id === urlQuiz) ?? quizzes[0];
+        activeQuizId = activeQuiz.id;
+
+        $('#quizSelect').innerHTML = quizzes.map((q) => `
+          <option value="${q.id}" ${q.id === activeQuizId ? 'selected' : ''}>
+            ${escapeHtml(q.title)} — ${q.status}
+          </option>
+        `).join('');
+
+        await loadQuiz();
+      } catch (error) {
+        toast(error.message, 'error');
+      }
+    }
+
+    async function loadQuiz() {
+      activeQuiz = quizzes.find((q) => q.id === activeQuizId);
+      if (!activeQuiz) return;
+
+      $('#quizInfo').classList.remove('hidden');
+      $('#quizInfo').innerHTML = `
+        <div class="card card-pad flex-between" style="flex-wrap:wrap;gap:10px">
+          <div>
+            <div class="flex-center" style="gap:8px;flex-wrap:wrap">
+              <strong>${escapeHtml(activeQuiz.title)}</strong>
+              ${statusBadge(activeQuiz.status)}
+            </div>
+            <div class="small muted mt-1">Status draft = peserta belum bisa join. Buka pendaftaran dari halaman Manajemen Kuis.</div>
+          </div>
+          <a class="btn btn-sm btn-soft" href="live.html?id=${activeQuiz.id}">Buka Live Kuis</a>
+        </div>`;
+
+      $('#tokenList').innerHTML = loadingState('Memuat token...');
+      $('#usageList').innerHTML = loadingState('Memuat peserta...');
+
+      try {
+        const [tokens, usageRows] = await Promise.all([
+          listTokens(activeQuizId),
+          listTokenUsage(activeQuizId),
+        ]);
+        usage = usageRows;
+        renderTokens(tokens, usageRows);
+        renderUsage(usageRows);
+      } catch (error) {
+        toast(error.message, 'error');
+        $('#tokenList').innerHTML = emptyState('⚠️', 'Gagal memuat token', error.message);
+        $('#usageList').innerHTML = emptyState('⚠️', 'Gagal memuat peserta', error.message);
+      }
+    }
+
+    function renderTokens(tokens, usageRows) {
+      const activeCount = tokens.filter((t) => t.is_active).length;
+      $('#tokenSummary').textContent = `${tokens.length} token · ${activeCount} aktif`;
+
+      if (!tokens.length) {
+        $('#tokenList').innerHTML = emptyState('⚿', 'Belum ada token', 'Klik Generate Token untuk membuat kode akses pertama.');
+        return;
+      }
+
+      const usedByToken = usageRows.reduce((acc, row) => {
+        if (row.token_id) acc[row.token_id] = (acc[row.token_id] ?? 0) + 1;
+        return acc;
+      }, {});
+
+      $('#tokenList').innerHTML = tokens.map((token) => `
+        <div class="token-row">
+          <div>
+            <div class="token-code">${escapeHtml(token.code)}</div>
+            <div class="token-meta">
+              ${new Date(token.created_at).toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })}
+              · ${usedByToken[token.id] ?? 0} pemakaian
+            </div>
+          </div>
+          <div class="flex-center" style="gap:6px">
+            <span class="badge ${token.is_active ? 'badge-berjalan' : 'badge-off'}">${token.is_active ? 'Aktif' : 'Nonaktif'}</span>
+            <button class="btn-icon" type="button" data-copy="${token.code}" title="Salin token">⧉</button>
+            <button class="btn btn-sm" type="button" data-toggle="${token.id}" data-active="${token.is_active}">
+              ${token.is_active ? 'Nonaktifkan' : 'Aktifkan'}
+            </button>
+            <button class="btn-icon danger" type="button" data-delete="${token.id}" title="Hapus token">✕</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function renderUsage(rows) {
+      $('#usageCount').textContent = `${rows.length} peserta`;
+
+      if (!rows.length) {
+        $('#usageList').innerHTML = emptyState('👥', 'Belum ada peserta', 'Bagikan token aktif kepada peserta untuk mulai mengisi ruang tunggu.');
+        return;
+      }
+
+      $('#usageList').innerHTML = `
+        <div class="table-wrap">
+          <table class="data">
+            <thead><tr><th>Peserta</th><th>Token</th><th>Masuk</th></tr></thead>
+            <tbody>
+              ${rows.map((row) => `
+                <tr>
+                  <td>
+                    <div class="name">${escapeHtml(row.profiles?.full_name ?? 'Peserta')}</div>
+                    <div class="sub">${escapeHtml(row.profiles?.nim_kelas || '—')}</div>
+                  </td>
+                  <td><span class="token-mini">${escapeHtml(row.tokens?.code ?? '—')}</span></td>
+                  <td class="sub nowrap">${formatDate(row.joined_at)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>`;
+    }
+
+    function bindListEvents() {
+      $('#tokenList').addEventListener('click', async (event) => {
+        const copyBtn = event.target.closest('[data-copy]');
+        if (copyBtn) {
+          const code = copyBtn.dataset.copy;
+          try {
+            await navigator.clipboard.writeText(code);
+            toast(`Token ${code} disalin.`);
+          } catch {
+            prompt('Salin token ini:', code);
+          }
+          return;
+        }
+
+        const toggleBtn = event.target.closest('[data-toggle]');
+        if (toggleBtn) {
+          const active = toggleBtn.dataset.active === 'true';
+          try {
+            await setTokenActive(toggleBtn.dataset.toggle, !active);
+            toast(active ? 'Token dinonaktifkan.' : 'Token diaktifkan.');
+            await loadQuiz();
+          } catch (error) {
+            toast(error.message, 'error');
+          }
+          return;
+        }
+
+        const deleteBtn = event.target.closest('[data-delete]');
+        if (deleteBtn) {
+          if (!confirm('Hapus token ini? Peserta yang sudah join tetap terdaftar.')) return;
+          try {
+            await deleteToken(deleteBtn.dataset.delete);
+            toast('Token dihapus.');
+            await loadQuiz();
+          } catch (error) {
+            toast(error.message, 'error');
+          }
+        }
+      });
+    }
+
+    async function generateToken() {
+      if (!activeQuizId) return;
+      const button = $('#generateBtn');
+      button.disabled = true;
+      try {
+        const token = await createToken(activeQuizId);
+        toast(`Token baru: ${token.code}`);
+        await loadQuiz();
+      } catch (error) {
+        toast(error.message, 'error');
+      } finally {
+        button.disabled = false;
+      }
+    }
+  </script>
+</body>
+</html>

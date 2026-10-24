@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Beranda - FreeBuff Quiz</title>
+    <link rel="stylesheet" href="../css/user.css">
+</head>
+<body>
+    <!-- Banner Utama -->
+    <header class="hero-banner">
+        <div class="container">
+            <h1>Selamat datang di quizz Sibling Solid</h1>
+            <p>Kausar Sihombing sebagai Lead Instruktur</p>
+        </div>
+    </header>
+
+    <!-- Navigasi Utama -->
+    <nav class="navbar user-nav">
+        <div class="logo">
+            <span>FreeBuff Quiz</span>
+        </div>
+        <ul class="nav-links">
+            <li><a href="user-beranda.html">Beranda</a></li>
+            <li><a href="user-kuis.html">Kuis</a></li>
+            <li><a href="user-tentang.html">Tentang</a></li>
+            <li><a href="user-kontak.html">Kontak</a></li>
+        </ul>
+        <div class="nav-actions">
+            <button id="accountBtn" class="btn-account">Account</button>
+        </div>
+    </nav>
+
+    <!-- Konten Utama -->
+    <main class="container">
+        <section class="welcome-section">
+            <div class="welcome-content">
+                <h2>Halo, Pengguna!</h2>
+                <p>Selamat datang di FreeBuff Quiz. Kamu bisa mulai mengikuti quiz Java operator dan percabangan di bawah ini.</p>
+                <a href="user-kuis.html" class="btn-start">Mulai Quiz Sekarang</a>
+            </div>
+        </section>
+
+        <section class="stats-section">
+            <div class="container">
+                <div class="stats-grid">
+                    <div stat-card>
+                        <div stat-number>"0"</div>
+                        <div stat-label>Soal Dijawab</div>
+                    </div>
+                    <div stat-card>
+                        <div stat-number>"0"</div>
+                        <div stat-label>Skor Kamu</div>
+                    </div>
+                    <div stat-card>
+                        <div stat-number>"#"</div>
+                        <div stat-label>Peringkat</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script src="../js/auth.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            auth.initAuth();
+            
+            // Check if user is logged in
+            const user = auth.getCurrentUser();
+            if (!user) {
+                // Show login prompt or redirect
+                const accountBtn = document.getElementById('accountBtn');
+                if (accountBtn) {
+                    accountBtn.addEventListener('click', () => {
+                        alert('Silakan login terlebih dahulu');
+                    });
+                }
+            }
+        });
+    </script>
+</body>
+</html>

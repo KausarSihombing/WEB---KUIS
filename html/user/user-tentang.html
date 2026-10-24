@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tentang Kami - FreeBuff Quiz</title>
+    <link rel="stylesheet" href="../css/user.css">
+</head>
+<body>
+    <!-- Banner Utama -->
+    <header class="hero-banner">
+        <div class="container">
+            <h1>Selamat datang di quizz Sibling Solid</h1>
+            <p>Kausar Sihombing sebagai Lead Instruktur</p>
+        </div>
+    </header>
+
+    <!-- Navigasi -->
+    <nav class="navbar user-nav">
+        <div class="logo">
+            <span>FreeBuff Quiz</span>
+        </div>
+        <ul class="nav-links">
+            <li><a href="user-beranda.html">Beranda</a></li>
+            <li><a href="user-kuis.html">Kuis</a></li>
+            <li><a href="user-tentang.html">Tentang</a></li>
+            <li><a href="user-kontak.html">Kontak</a></li>
+        </ul>
+        <div class="nav-actions">
+            <button id="accountBtn" class="btn-account">Account</button>
+        </div>
+    </nav>
+
+    <!-- Konten Tentang -->
+    <main class="container">
+        <section class="about-section">
+            <div class="about-content">
+                <div class="about-img">
+                    <div style="background: var(--card-bg); padding: 3rem; border-radius: 15px; text-align: center;">
+                        <h3>FreeBuff Quiz</h3>
+                        <p>Platform belajar Java interaktif</p>
+                    </div>
+                </div>
+                <div class="about-text">
+                    <h2>Tentang Kami</h2>
+                    <p>FreeBuff Quiz adalah platform pembelajaran interaktif yang dirancang untuk membantu mahasiswa dan pengembang memahami konsep pemrograman Java dengan cara yang menyenangkan dan efektif.</p>
+                    <p>Dibangun oleh tim yang terdiri dari Kausar Sihombing sebagai pengembang utama dan Amathul zeehan sebagai lead instruktur, kami berkomitmen untuk menyediakan materi pendidikan yang berkualitas.</p>
+                    <hr>
+                    <p><strong>Alamat:</strong> Jakarta, Indonesia</p>
+                    <p><strong>Tahun:</strong> 2026</p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script src="../js/auth.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            auth.initAuth();
+        });
+    </script>
+</body>
+</html>

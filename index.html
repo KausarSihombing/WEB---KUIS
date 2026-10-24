@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kuis Bahasa C — Platform Kuis Interaktif</title>
+  <meta name="description" content="Platform kuis Bahasa C dengan token akses, kontrol realtime, dan leaderboard untuk instruktur dan peserta.">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="landing">
+    <header class="landing-nav">
+      <a class="brand" href="index.html" style="text-decoration:none;color:inherit">
+        <span class="brand-mark">C</span>
+        <span class="brand-text">Kuis Bahasa C<small>Learn · Code · Compete</small></span>
+      </a>
+      <nav class="landing-links">
+        <a href="#fitur">Fitur</a>
+        <a href="#alur">Alur Kuis</a>
+        <a href="#untuk-admin">Untuk Instruktur</a>
+      </nav>
+      <div class="flex-center">
+        <a class="btn btn-ghost btn-sm" href="login.html">Masuk</a>
+        <a class="btn btn-primary btn-sm" href="register.html">Daftar</a>
+      </div>
+    </header>
+
+    <section class="hero">
+      <div>
+        <span class="eyebrow">Platform kuis realtime</span>
+        <h1 style="margin-top:10px">Uji logika<br><span>Bahasa C</span> bersama kelas.</h1>
+        <p class="hero-lead">
+          Peserta masuk dengan token, mengerjakan soal satu per satu, dan melihat peringkat saat instruktur
+          mengakhiri kuis. Semua terhubung realtime — tanpa refresh.
+        </p>
+        <div class="hero-actions">
+          <a class="btn btn-primary btn-lg" href="register.html">Mulai sebagai peserta</a>
+          <a class="btn btn-lg" href="login.html">Masuk sebagai instruktur</a>
+        </div>
+        <div class="hero-meta">
+          <div><strong>10+</strong><span>Soal dasar C</span></div>
+          <div><strong>Realtime</strong><span>Start &amp; timer tersinkron</span></div>
+          <div><strong>1 klik</strong><span>Token akses per kuis</span></div>
+        </div>
+      </div>
+
+      <div class="hero-art">
+        <div class="hero-card">
+          <div class="mini-bar"><i></i><i></i><i></i></div>
+          <div class="code-window">
+            <div><span class="c-com">// kuis_01.c — pointer dasar</span></div>
+            <div><span class="c-kw">#include</span> &lt;stdio.h&gt;</div>
+            <div>&nbsp;</div>
+            <div><span class="c-kw">int</span> main(<span class="c-kw">void</span>) {</div>
+            <div>&nbsp;&nbsp;<span class="c-type">int</span> a = 10;</div>
+            <div>&nbsp;&nbsp;<span class="c-type">int</span> *p = &amp;a;</div>
+            <div>&nbsp;&nbsp;*p = 25;</div>
+            <div>&nbsp;&nbsp;printf(<span class="c-str">"%d"</span>, a);</div>
+            <div>&nbsp;&nbsp;<span class="c-kw">return</span> 0;</div>
+            <div>}</div>
+          </div>
+          <div class="floating-score">
+            <div class="ring">♛</div>
+            <div>
+              <strong style="font-size:12.5px">Peringkat realtime</strong>
+              <div class="tiny muted">Nama tampil setelah kuis selesai</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="fitur">
+      <div class="section-head">
+        <span class="eyebrow">Fitur utama</span>
+        <h2 style="margin-top:8px">Dibangun untuk kelas yang aktif.</h2>
+        <p>Dari pendaftaran peserta sampai podium peringkat, semua alurnya jelas dan aman.</p>
+      </div>
+      <div class="feature-grid">
+        <article class="feature">
+          <div class="feature-icon">⚿</div>
+          <h3>Token akses per kuis</h3>
+          <p>Setiap kuis punya token 6 karakter. Hanya peserta yang punya token dan sudah login yang bisa masuk.</p>
+        </article>
+        <article class="feature">
+          <div class="feature-icon">▶</div>
+          <h3>Kontrol realtime</h3>
+          <p>Instruktur menekan START dan seluruh peserta langsung masuk ke soal. Timer mengikuti server, bukan jam HP.</p>
+        </article>
+        <article class="feature">
+          <div class="feature-icon">⏱</div>
+          <h3>Durasi fleksibel</h3>
+          <p>Tambahkan atau kurangi waktu saat kuis berjalan. Semua peserta melihat perubahan tanpa refresh.</p>
+        </article>
+        <article class="feature">
+          <div class="feature-icon">✎</div>
+          <h3>Soal &amp; kode C</h3>
+          <p>Pertanyaan pilihan ganda dengan potongan kode C yang disorot syntax highlight.</p>
+        </article>
+        <article class="feature">
+          <div class="feature-icon">♛</div>
+          <h3>Podium peringkat</h3>
+          <p>Leaderboard lengkap untuk instruktur, dan daftar nama peringkat untuk peserta — tanpa membocorkan nilai.</p>
+        </article>
+        <article class="feature">
+          <div class="feature-icon">▤</div>
+          <h3>Materi pembelajaran</h3>
+          <p>Bagikan materi teori, link, atau PDF dari panel admin. Peserta membaca materi yang sudah terbit.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section" id="alur" style="padding-top:12px">
+      <div class="section-head">
+        <span class="eyebrow">Alur kuis</span>
+        <h2 style="margin-top:8px">Empat langkah dari daftar sampai podium.</h2>
+      </div>
+      <div class="steps">
+        <div class="step">
+          <h4>Buat akun</h4>
+          <p>Daftar dengan nama lengkap, NIM/kelas, email, dan password. Akun peserta langsung aktif.</p>
+        </div>
+        <div class="step">
+          <h4>Masukkan token</h4>
+          <p>Di halaman Ikuti Kuis, tempel token dari instruktur. Kamu masuk ke ruang tunggu.</p>
+        </div>
+        <div class="step">
+          <h4>Kerjakan soal</h4>
+          <p>Jawaban tersimpan otomatis. Boleh ganti jawaban sampai kamu menekan Selesai Mengerjakan.</p>
+        </div>
+        <div class="step">
+          <h4>Lihat peringkat</h4>
+          <p>Saat instruktur mengakhiri kuis, nama peserta tampil berurutan di podium — tanpa nilai.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="untuk-admin" style="padding-top:12px">
+      <div class="cta-band">
+        <div>
+          <h2>Siap memulai kuis pertama?</h2>
+          <p>Instruktur mengelola kuis, token, waktu, dan leaderboard dari satu panel.</p>
+        </div>
+        <div class="flex-center flex-wrap">
+          <a class="btn btn-primary" href="login.html">Masuk panel instruktur</a>
+          <a class="btn" href="register.html" style="background:transparent;color:#fff;border-color:rgba(255,255,255,.35)">Daftar peserta</a>
+        </div>
+      </div>
+    </section>
+
+    <footer class="landing-foot">
+      <span>© 2026 Kuis Bahasa C. Dibuat untuk pembelajaran bahasa C.</span>
+      <span>Supabase · Vanilla JS · Data aman dengan RLS</span>
+    </footer>
+  </div>
+</body>
+</html>

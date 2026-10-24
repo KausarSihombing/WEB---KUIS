@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CRUD Soal - FreeBuff Quiz</title>
+    <link rel="stylesheet" href="../css/admin.css">
+</head>
+<body>
+    <!-- Banner Utama -->
+    <header class="hero-banner">
+        <div class="container">
+            <h1>Selamat datang di quizz Sibling Solid</h1>
+            <p>Kausar Sihombing sebagai Lead Instruktur</p>
+        </div>
+    </header>
+
+    <!-- Navigasi Admin -->
+    <nav class="navbar admin-nav">
+        <div class="logo">
+            <span>FreeBuff Quiz</span>
+        </div>
+        <ul class="nav-links">
+            <li><a href="admin-dashboard.html">Dashboard</a></li>
+            <li><a href="admin-crud.html">CRUD Soal</a></li>
+        </ul>
+        <div class="nav-actions">
+            <button id="logoutBtn" class="btn-logout">Logout</button>
+        </div>
+    </nav>
+
+    <!-- Konten CRUD -->
+    <main class="container">
+        <section class="crud-section">
+            <div class="crud-header">
+                <h2>Kelola Soal Kuis</h2>
+                <p>Tambah, edit, atau hapus soal kuis Java</p>
+            </div>
+            
+            <!-- Form Input Soal -->
+            <form id="question-form" class="question-form">
+                <input type="hidden" id="question-id">
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="pertanyaan">Pertanyaan</label>
+                        <textarea id="pertanyaan" rows="3" required></textarea>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Tipe Soal</label>
+                        <div class="radio-group">
+                            <label><input type="radio" name="tipe-soal" value="pilihan_ganda" checked> Pilihan Ganda</label>
+                            <label><input type="radio" name="tipe-soal" value="esai"> Esai</label>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Section untuk Pilihan Ganda (akan muncul/dipilih secara dinamis) -->
+                <div id="pilihan-ganda-section" class="form-section">
+                    <h3>Opsi Jawaban (Pilihan Ganda)</h3>
+                    <div class="options-grid">
+                        <div class="option-row">
+                            <div class="option-col">
+                                <label for="opsi-a">Opsi A</label>
+                                <textarea id="opsi-a" rows="2" placeholder="Opsi A"></textarea>
+                            </div>
+                            <div class="option-col">
+                                <label for="opsi-b">Opsi B</label>
+                                <textarea id="opsi-b" rows="2" placeholder="Opsi B"></textarea>
+                            </div>
+                        </div>
+                        <div class="option-row">
+                            <div class="option-col">
+                                <label for="opsi-c">Opsi C</label>
+                                <textarea id="opsi-c" rows="2" placeholder="Opsi C"></textarea>
+                            </div>
+                            <div class="option-col">
+                                <label for="opsi-d">Opsi D</label>
+                                <textarea id="opsi-d" rows="2" placeholder="Opsi D"></textarea>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Section untuk Esai (akan muncul jika dipilih) -->
+                <div id="essay-section" class="form-section" style="display: none;">
+                    <h3>Isi Esai</h3>
+                    <p>Masukkan pertanyaan esai di bidang ini. Tidak ada opsi A-D untuk tipe ini.</p>
+                    <div class="form-group">
+                        <textarea id-essay" rows="4" placeholder="Masukkan soal esai di sini..."></textarea>
+                    </div>
+                    <small>Catatan: Opsi A-D tidak perlu diisi untuk tipe soal Esai.</small>
+                </div>
+                
+                <div class="form-group">
+                    <label for="jawaban-benar">Jawaban Benar</label>
+                    <input type="text" id="jawaban-benar" placeholder="Contoh: A atau nomor jawaban">
+                </div>
+                
+                <div class="form-actions">
+                    <button type="submit" class="btn-save">Simpan Soal</button>
+                    <button type="button" class="btn-cancel" id="cancel-btn">Batal</button>
+                </div>
+            </form>
+            
+            <!-- Daftar Soal yang Sudah Ada -->
+            <div id="questions-list" class="questions-list">
+                <p>Memuat daftar soal...</p>
+            </div>
+        </section>
+    </main>
+
+    <script src="../js/supabase-config.js"></script>
+    <script src="../js/admin.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            auth.initAuth();
+            admin.initAdminCRUD();
+            
+            // Set form elements for admin.js
+            admin.setAdminElements({
+                questionForm: document.getElementById('question-form'),
+                tipeSoalRadios: document.querySelectorAll('input[name="tipe-soal"]'),
+                pilihanGandaSection: document.getElementById('pilihan-ganda-section'),
+                essaySection: document.getElementById('essay-section'),
+                formPilihanGanda: {
+                    opsi_a: document.getElementById('opsi-a'),
+                    opsi_b: document.getElementById('opsi-b'),
+                    opsi_c: document.getElementById('opsi-c'),
+                    opsi_d: document.getElementById('opsi-d'),
+                },
+                formEssay: {
+                    essay: document.getElementById('essay'),
+                },
+                opsiAInput: document.getElementById('opsi-a'),
+                opsiBInput: document.getElementById('opsi-b'),
+                opsiCInput: document.getElementById('opsi-c'),
+                opsiDInput: document.getElementById('opsi-d'),
+                jawabanBenarInput: document.getElementById('jawaban-benar'),
+                pertanyaanInput: document.getElementById('pertanyaan'),
+                saveBtn: document.querySelector('.btn-save'),
+                cancelBtn: document.getElementById('cancel-btn'),
+                questionsList: document.getElementById('questions-list'),
+                emptyState: null
+            });
+        });
+    </script>
+</body>
+</html>

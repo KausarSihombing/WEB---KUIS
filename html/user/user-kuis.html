@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kuis - FreeBuff Quiz</title>
+    <link rel="stylesheet" href="../css/user.css">
+</head>
+<body>
+    <!-- Banner Utama -->
+    <header class="hero-banner">
+        <div class="container">
+            <h1>Selamat datang di quizz Sibling Solid</h1>
+            <p>Kausar Sihombing sebagai Lead Instruktur</p>
+        </div>
+    </header>
+
+    <!-- Navigasi -->
+    <nav class="navbar user-nav">
+        <div class="logo">
+            <span>FreeBuff Quiz</span>
+        </div>
+        <ul class="nav-links">
+            <li><a href="user-beranda.html">Beranda</a></li>
+            <li><a href="user-kuis.html">Kuis</a></li>
+            <li><a href="user-tentang.html">Tentang</a></li>
+            <li><a href="user-kontak.html">Kontak</a></li>
+        </ul>
+        <div class="nav-actions">
+            <button id="accountBtn" class="btn-account">Account</button>
+        </div>
+    </nav>
+
+    <!-- Konten Quiz -->
+    <main class="container">
+        <!-- Section untuk menampilkan status quiz -->
+        <section id="quiz-section">
+            <div class="quiz-header">
+                <h2>Quiz Java Operator & Percabangan</h2>
+                <div id="quiz-progress">
+                    <span id="soal-sekarang">1</span> dari <span id="total-soal">0</span>
+                </div>
+            </div>
+            
+            <!-- Kontainer soal akan di-render oleh JavaScript -->
+            <div id="quiz-container">
+                <p style="color: var(--text-color); text-align: center; padding: 2rem;">
+                Memuat soal...</p>
+            </div>
+        </section>
+    </main>
+
+    <script src="../js/kuis.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Initialize auth
+            auth.initAuth();
+            
+            // Initialize quiz
+            kuis.initKuis();
+            
+            // Check login status
+            const user = auth.getCurrentUser();
+            if (!user) {
+                const accountBtn = document.getElementById('accountBtn');
+                if (accountBtn) {
+                    accountBtn.addEventListener('click', () => {
+                        alert('Silakan login terlebih dahulu untuk mengakses kuis');
+                    });
+                }
+            }
+        });
+    </script>
+</body>
+</html>

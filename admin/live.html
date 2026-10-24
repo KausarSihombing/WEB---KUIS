@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Live Kuis — Kuis Bahasa C</title>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" id="sidebar"></aside>
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+    <div class="main">
+      <header class="topbar">
+        <button class="hamburger" id="sidebarToggle" aria-label="Buka menu"><span></span><span></span><span></span></button>
+        <div>
+          <h1 id="pageTitle">Live Kuis</h1>
+          <div class="sub" id="pageSub">Kontrol jalannya kuis secara realtime</div>
+        </div>
+        <div class="topbar-actions">
+          <a class="btn btn-sm" href="quiz.html">Manajemen Kuis</a>
+          <a class="btn btn-sm" href="leaderboard.html">Leaderboard</a>
+        </div>
+      </header>
+
+      <main class="content">
+        <div id="liveArea">
+          <div class="loading-block"><span class="spinner"></span><span>Memuat kuis...</span></div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script type="module">
+    import { requireAuth } from '../js/auth.js';
+    import { sb } from '../js/supabase.js';
+    import {
+      listQuizzes, getQuiz, listParticipants, countAnswersByParticipant,
+      startQuiz, adjustQuizDuration, finalizeQuiz,
+    } from '../js/admin.js';
+    import { watchQuiz, watchParticipants } from '../js/realtime.js';
+    import {
+      $, $$, mountShell, toast, statusBadge, escapeHtml, formatDate, formatClock,
+      emptyState, loadingState, initials,
+    } from '../js/ui.js';
+
+    const quizId = new URLSearchParams(location.search).get('id');
+    let quiz = null;
+    let participants = [];
+    let answerCounts = {};
+    let totalQuestions = 0;
+    let ticker = null;
+    let poller = null;
+
+    const profile = await requireAuth('admin');
+    if (profile) {
+      mountShell({ profile, role: 'admin', active: 'live', title: 'Live Kuis', subtitle: 'Kontrol jalannya kuis secara realtime' });
+      init();
+    }
+
+    async function init() {
+      if (!quizId) {
+        await renderPicker();
+        return;
+      }
+      try {
+        quiz = await getQuiz(quizId);
+        if (!quiz) {
+          $('#liveArea').innerHTML = `<div class="panel">${emptyState('🔍', 'Kuis tidak ditemukan', 'Kembali ke Manajemen Kuis untuk memilih kuis.')}</div>`;
+          return;
+        }
+
+        await refreshAll();
+        renderPage();
+
+        watchQuiz(quizId, async (row) => {
+          const previous = quiz.status;
+          quiz = { ...quiz, ...row };
+          if (previous !== row.status) toast(`Status kuis: ${row.status}.`, 'info');
+          renderControlContent();
+          renderParticipants();
+          startTicker();
+          if (row.status === 'berjalan') startPolling();
+          if (row.status === 'selesai') stopPolling();
+          refreshParticipants();
+        }, () => toast('Koneksi realtime terputus. Data akan disegarkan berkala.', 'error'));
+
+        watchParticipants(quizId, () => refreshParticipants());
+      } catch (error) {
+        toast(error.message, 'error');
+        $('#liveArea').innerHTML = `<div class="panel">${emptyState('⚠️', 'Gagal memuat kuis', error.message)}</div>`;
+      }
+    }
+
+    async function renderPicker() {
+      try {
+        const quizzes = await listQuizzes();
+        const active = quizzes.filter((q) => ['menunggu', 'berjalan'].includes(q.status));
+
+        if (!active.length) {
+          $('#liveArea').innerHTML = `<div class="panel">${emptyState('📡', 'Tidak ada kuis aktif', 'Buka pendaftaran kuis terlebih dahulu di Manajemen Kuis, lalu kembali ke halaman ini.')}</div>
+            <div class="mt-3"><a class="btn btn-primary" href="quiz.html">Buka Manajemen Kuis</a></div>`;
+          return;
+        }
+
+        $('#liveArea').innerHTML = `
+          <div class="page-head">
+            <div><h2>Pilih Kuis</h2><p>Pilih kuis yang sedang menunggu peserta atau sudah berjalan.</p></div>
+          </div>
+          <div class="panel">
+            <div class="panel-body">
+              <div class="quiz-list">
+                ${active.map((q) => `
+                  <a class="quiz-item" href="live.html?id=${q.id}" style="text-decoration:none;color:inherit">
+                    <div class="flex-between" style="gap:8px">
+                      <h4>${escapeHtml(q.title)}</h4>
+                      ${statusBadge(q.status)}
+                    </div>
+                    <div class="quiz-meta">${q.duration_minutes} menit · ${q.shuffle ? 'soal diacak' : 'urutan tetap'}</div>
+                  </a>
+                `).join('')}
+              </div>
+            </div>
+          </div>`;
+      } catch (error) {
+        toast(error.message, 'error');
+      }
+    }
+
+    async function refreshAll() {
+      const [parts, countsRes] = await Promise.all([
+        listParticipants(quizId),
+        sb.from('questions').select('id', { count: 'exact', head: true }).eq('quiz_id', quizId),
+      ]);
+      if (countsRes.error) throw countsRes.error;
+      participants = parts;
+      totalQuestions = countsRes.count ?? 0;
+      answerCounts = quiz.status === 'berjalan' ? await countAnswersByParticipant(quizId) : {};
+    }
+
+    async function refreshParticipants() {
+      try {
+        participants = await listParticipants(quizId);
+        if (quiz.status === 'berjalan') answerCounts = await countAnswersByParticipant(quizId);
+        renderParticipants();
+      } catch (error) {
+        console.error(error);
+      }
+    }
+
+    function renderPage() {
+      $('#liveArea').innerHTML = `
+        <div class="page-head">
+          <div>
+            <h2>${escapeHtml(quiz.title)}</h2>
+            <p>${escapeHtml(quiz.description || 'Tanpa deskripsi')}</p>
+          </div>
+          <div class="page-actions">
+            <a class="btn btn-sm" href="quiz.html?id=${quiz.id}">Kelola Soal</a>
+            <a class="btn btn-sm btn-soft" href="tokens.html?quiz=${quiz.id}">Token</a>
+            ${quiz.status === 'selesai' ? `<a class="btn btn-sm btn-primary" href="leaderboard.html?id=${quiz.id}">Leaderboard</a>` : ''}
+          </div>
+        </div>
+
+        <div class="split-wide">
+          <div class="panel">
+            <div class="panel-head">
+              <div><h3>Kontrol Kuis</h3><p id="controlSub">—</p></div>
+              <span id="statusBadgeWrap">${statusBadge(quiz.status)}</span>
+            </div>
+            <div class="panel-body" id="controlBox"></div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <div><h3 id="participantTitle">Ruang Tunggu</h3><p id="participantSub">Peserta yang sudah masuk</p></div>
+              <span class="badge" id="participantCount">${participants.length} peserta</span>
+            </div>
+            <div class="panel-body tight" id="participantArea"></div>
+          </div>
+        </div>
+      `;
+
+      renderControlContent();
+      renderParticipants();
+      startTicker();
+      if (quiz.status === 'berjalan') startPolling();
+      else stopPolling();
+    }
+
+    function renderControlContent() {
+      const box = $('#controlBox');
+      if (!box || !quiz) return;
+
+      const sub = $('#controlSub');
+      if (sub) sub.textContent = quiz.status === 'menunggu'
+        ? 'Peserta menunggu instruktur menekan START'
+        : quiz.status === 'berjalan'
+          ? 'Timer dihitung dari ends_at server'
+          : 'Kuis telah diakhiri';
+
+      $('#participantSub').textContent = quiz.status === 'menunggu'
+        ? 'Peserta yang sudah masuk dengan token'
+        : quiz.status === 'berjalan'
+          ? 'Progres jawaban (tanpa membuka benar/salah)'
+          : 'Hasil akhir peserta';
+
+      if (quiz.status === 'draft') {
+        box.innerHTML = `
+          <div class="form-error">Kuis masih berstatus draft. Buka pendaftaran dari halaman Manajemen Kuis sebelum memulai.</div>
+          <a class="btn btn-primary btn-block mt-3" href="quiz.html?id=${quiz.id}">Buka Manajemen Kuis</a>`;
+        return;
+      }
+
+      if (quiz.status === 'menunggu') {
+        box.innerHTML = `
+          <div class="flex-center" style="gap:10px">
+            <span class="live-dot"><i></i> Ruang tunggu terbuka</span>
+          </div>
+          <div class="lobby-stats">
+            <div class="lobby-stat"><strong>${participants.length}</strong><span>Peserta masuk</span></div>
+            <div class="lobby-stat"><strong>${totalQuestions}</strong><span>Soal siap</span></div>
+          </div>
+          <div class="mt-3 small muted">
+            Saat kamu menekan START, waktu mulai dicatat di server dan seluruh peserta langsung masuk ke soal.
+          </div>
+          <button class="btn btn-primary btn-block btn-lg mt-3" type="button" id="startBtn">▶ START KUIS SEKARANG</button>
+          <div class="tiny muted center mt-2">Durasi awal: ${quiz.duration_minutes} menit</div>
+        `;
+        $('#startBtn')?.addEventListener('click', handleStart);
+        return;
+      }
+
+      if (quiz.status === 'berjalan') {
+        box.innerHTML = `
+          <div class="flex-between" style="flex-wrap:wrap;gap:8px">
+            <div>
+              <div class="tiny muted">Sisa waktu</div>
+              <div class="duration-display" id="liveTimer">--:--</div>
+            </div>
+            <span class="live-dot"><i></i> Berlangsung</span>
+          </div>
+
+          <div class="divider"></div>
+          <div class="tiny muted mb-1">Ubah durasi (menit)</div>
+          <div class="duration-controls">
+            <button class="btn btn-sm" type="button" data-delta="-5">−5 menit</button>
+            <button class="btn btn-sm" type="button" data-delta="5">+5 menit</button>
+            <input class="input" type="number" id="manualDelta" value="5" step="1" style="width:86px" aria-label="Menit manual">
+            <button class="btn btn-sm btn-soft" type="button" id="applyDelta">Terapkan</button>
+          </div>
+          <div class="tiny muted mt-1">Tidak bisa mengurangi hingga melewati waktu yang sudah berjalan.</div>
+
+          <div class="divider"></div>
+          <button class="btn btn-danger btn-block" type="button" id="endBtn">■ AKHIRI KUIS &amp; HITUNG NILAI</button>
+          <div class="tiny muted center mt-2">Semua jawaban dikunci dan dinilai satu kali di server.</div>
+        `;
+
+        $$('#controlBox [data-delta]').forEach((btn) => {
+          btn.addEventListener('click', () => changeDuration(Number(btn.dataset.delta)));
+        });
+        $('#applyDelta')?.addEventListener('click', () => {
+          const delta = Number($('#manualDelta').value);
+          if (!Number.isFinite(delta) || delta === 0) return toast('Masukkan jumlah menit selain 0.', 'error');
+          changeDuration(delta);
+        });
+        $('#endBtn')?.addEventListener('click', handleEnd);
+        updateTimerLabel();
+        return;
+      }
+
+      box.innerHTML = `
+        <div class="empty" style="padding:20px 0">
+          <div class="emoji">🏁</div>
+          <h4>Kuis selesai</h4>
+          <p>Nilai sudah dihitung dan leaderboard telah dibuka untuk peserta (nama saja).</p>
+        </div>
+        <a class="btn btn-primary btn-block" href="leaderboard.html?id=${quiz.id}">Lihat Leaderboard Lengkap</a>
+      `;
+    }
+
+    function renderParticipants() {
+      const area = $('#participantArea');
+      if (!area) return;
+
+      const count = participants.length;
+      const countEl = $('#participantCount');
+      if (countEl) countEl.textContent = `${count} peserta`;
+      const titleEl = $('#participantTitle');
+      if (titleEl) titleEl.textContent = quiz.status === 'menunggu'
+        ? 'Ruang Tunggu'
+        : quiz.status === 'berjalan'
+          ? 'Monitoring Peserta'
+          : 'Hasil Peserta';
+
+      if (!count) {
+        area.innerHTML = emptyState(
+          '👥',
+          quiz.status === 'menunggu' ? 'Belum ada peserta' : 'Tidak ada peserta',
+          quiz.status === 'menunggu' ? 'Bagikan token aktif agar peserta bisa masuk ke ruang tunggu.' : 'Kuis ini tidak diikuti peserta.',
+        );
+        return;
+      }
+
+      if (quiz.status === 'menunggu') {
+        area.innerHTML = participants.map((p) => `
+          <div class="monitor-row">
+            <div class="avatar">${escapeHtml(initials(p.profiles?.full_name))}</div>
+            <div class="who">
+              <strong>${escapeHtml(p.profiles?.full_name ?? 'Peserta')}</strong>
+              <span>${escapeHtml(p.profiles?.nim_kelas || '—')} · masuk ${formatDate(p.joined_at)}</span>
+            </div>
+            <span class="badge badge-berjalan">Siap</span>
+          </div>
+        `).join('');
+        return;
+      }
+
+      if (quiz.status === 'berjalan') {
+        area.innerHTML = participants.map((p) => {
+          const answered = answerCounts[p.id] ?? 0;
+          const percent = totalQuestions ? Math.round((answered / totalQuestions) * 100) : 0;
+          return `
+            <div class="monitor-row">
+              <div class="avatar">${escapeHtml(initials(p.profiles?.full_name))}</div>
+              <div class="who">
+                <strong>${escapeHtml(p.profiles?.full_name ?? 'Peserta')}</strong>
+                <span>${escapeHtml(p.profiles?.nim_kelas || '—')}</span>
+              </div>
+              <div class="progress-mini" title="${answered} dari ${totalQuestions} soal terjawab"><i style="width:${percent}%"></i></div>
+              <span class="count-pill">${answered}/${totalQuestions}</span>
+              <span class="badge ${p.submitted_at ? 'badge-selesai' : 'badge-menunggu'}">${p.submitted_at ? 'Terkumpul' : 'Mengerjakan'}</span>
+            </div>`;
+        }).join('');
+        return;
+      }
+
+      area.innerHTML = participants.map((p) => `
+        <div class="monitor-row">
+          <div class="avatar">${escapeHtml(initials(p.profiles?.full_name))}</div>
+          <div class="who">
+            <strong>${escapeHtml(p.profiles?.full_name ?? 'Peserta')}</strong>
+            <span>${escapeHtml(p.profiles?.nim_kelas || '—')}</span>
+          </div>
+          <span class="count-pill">${p.score} poin</span>
+          <span class="badge">#${p.rank ?? '—'}</span>
+        </div>
+      `).join('');
+    }
+
+    /* ------------------------------ aksi ------------------------------ */
+    async function handleStart() {
+      if (!confirm('Mulai kuis sekarang? Semua peserta akan langsung masuk ke soal.')) return;
+      const button = $('#startBtn');
+      button.disabled = true;
+      try {
+        await startQuiz(quizId);
+        quiz = await getQuiz(quizId);
+        toast('Kuis dimulai. Timer berjalan.');
+        renderPage();
+        await refreshParticipants();
+      } catch (error) {
+        toast(error.message, 'error');
+        button.disabled = false;
+      }
+    }
+
+    async function changeDuration(delta) {
+      try {
+        const result = await adjustQuizDuration(quizId, delta);
+        if (result.ends_at) quiz.ends_at = result.ends_at;
+        if (result.duration_minutes) quiz.duration_minutes = result.duration_minutes;
+        toast(delta > 0 ? `Waktu ditambah ${delta} menit.` : `Waktu dikurangi ${Math.abs(delta)} menit.`);
+        if (quiz.status === 'berjalan') {
+          updateTimerLabel();
+        } else {
+          renderControlContent();
+        }
+      } catch (error) {
+        toast(error.message, 'error');
+      }
+    }
+
+    async function handleEnd() {
+      if (!confirm('Akhiri kuis sekarang? Semua jawaban dikunci dan nilai dihitung sekali. Peserta tidak bisa mengubah jawaban lagi.')) return;
+      const button = $('#endBtn');
+      button.disabled = true;
+      try {
+        await finalizeQuiz(quizId);
+        toast('Kuis selesai. Leaderboard dibuka.');
+        location.href = `leaderboard.html?id=${quizId}`;
+      } catch (error) {
+        toast(error.message, 'error');
+        button.disabled = false;
+      }
+    }
+
+    /* ------------------------------ timer & polling ------------------------------ */
+    function startTicker() {
+      if (ticker) clearInterval(ticker);
+      if (quiz?.status !== 'berjalan' || !quiz?.ends_at) return;
+      updateTimerLabel();
+      ticker = setInterval(updateTimerLabel, 1000);
+    }
+
+    function updateTimerLabel() {
+      const el = $('#liveTimer');
+      if (!el || !quiz?.ends_at) return;
+      const left = Math.max(0, new Date(quiz.ends_at).getTime() - Date.now());
+      el.textContent = formatClock(left / 1000);
+      el.classList.toggle('danger', left <= 60 * 1000);
+    }
+
+    function startPolling() {
+      stopPolling();
+      poller = setInterval(refreshParticipants, 4000);
+    }
+
+    function stopPolling() {
+      if (poller) clearInterval(poller);
+      poller = null;
+    }
+
+    window.addEventListener('beforeunload', () => {
+      if (ticker) clearInterval(ticker);
+      stopPolling();
+    });
+  </script>
+</body>
+</html>

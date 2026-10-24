@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard Instruktur — Kuis Bahasa C</title>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" id="sidebar"></aside>
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+    <div class="main">
+      <header class="topbar">
+        <button class="hamburger" id="sidebarToggle" aria-label="Buka menu"><span></span><span></span><span></span></button>
+        <div>
+          <h1 id="pageTitle">Dashboard</h1>
+          <div class="sub" id="pageSub">Ringkasan aktivitas kuis</div>
+        </div>
+        <div class="topbar-actions">
+          <a class="btn btn-primary btn-sm" href="quiz.html">+ Kuis Baru</a>
+        </div>
+      </header>
+
+      <main class="content">
+        <div class="page-head">
+          <div>
+            <h2 id="greeting">Selamat datang</h2>
+            <p>Pantau kuis, peserta, dan nilai dari satu tempat.</p>
+          </div>
+          <div class="page-actions">
+            <a class="btn btn-sm" href="live.html">Buka Live Kuis</a>
+            <a class="btn btn-sm" href="leaderboard.html">Leaderboard</a>
+          </div>
+        </div>
+
+        <div class="stat-grid">
+          <div class="stat accent">
+            <div class="top"><span class="label">Total Peserta</span><span class="icon">☷</span></div>
+            <div class="value" id="statPeserta">—</div>
+            <div class="foot">Akun peserta terdaftar</div>
+          </div>
+          <div class="stat">
+            <div class="top"><span class="label">Total Kuis</span><span class="icon">✎</span></div>
+            <div class="value" id="statKuis">—</div>
+            <div class="foot">Semua kuis yang dibuat</div>
+          </div>
+          <div class="stat">
+            <div class="top"><span class="label">Kuis Aktif</span><span class="icon">▶</span></div>
+            <div class="value" id="statAktif">—</div>
+            <div class="foot">Menunggu atau berjalan</div>
+          </div>
+          <div class="stat">
+            <div class="top"><span class="label">Rata-rata Nilai</span><span class="icon">♛</span></div>
+            <div class="value" id="statNilai">—</div>
+            <div class="foot">Dari kuis yang sudah selesai</div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h3>Daftar Kuis</h3>
+              <p>Kelola soal, token, dan jalannya kuis</p>
+            </div>
+            <a class="btn btn-sm btn-soft" href="quiz.html">Semua kuis</a>
+          </div>
+          <div class="panel-body tight" id="quizTable">
+            <div class="loading-block"><span class="spinner"></span><span>Memuat kuis...</span></div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script type="module">
+    import { requireAuth } from '../js/auth.js';
+    import { sb } from '../js/supabase.js';
+    import { $, mountShell, toast, statusBadge, escapeHtml, formatDate, round, emptyState } from '../js/ui.js';
+
+    const profile = await requireAuth('admin');
+
+    if (profile) {
+      mountShell({
+        profile,
+        role: 'admin',
+        active: 'dashboard',
+        title: 'Dashboard',
+        subtitle: 'Ringkasan aktivitas kuis',
+      });
+
+      $('#greeting').textContent = `Halo, ${profile.full_name.split(' ')[0]} 👋`;
+      loadDashboard();
+    }
+
+    async function loadDashboard() {
+      try {
+        const [profilesRes, quizzesRes, participantsRes] = await Promise.all([
+          sb.from('profiles').select('id', { count: 'exact', head: true }).eq('role', 'peserta'),
+          sb.from('quizzes').select('id, title, description, duration_minutes, shuffle, status, created_at, ends_at').order('created_at', { ascending: false }),
+          sb.from('participants').select('quiz_id, score, rank, submitted_at'),
+        ]);
+
+        if (profilesRes.error) throw profilesRes.error;
+        if (quizzesRes.error) throw quizzesRes.error;
+        if (participantsRes.error) throw participantsRes.error;
+
+        const quizzes = quizzesRes.data ?? [];
+        const participants = participantsRes.data ?? [];
+        const finishedIds = new Set(quizzes.filter((q) => q.status === 'selesai').map((q) => q.id));
+
+        const scores = participants
+          .filter((p) => finishedIds.has(p.quiz_id))
+          .map((p) => Number(p.score ?? 0));
+
+        const countByQuiz = participants.reduce((acc, p) => {
+          acc[p.quiz_id] = (acc[p.quiz_id] ?? 0) + 1;
+          return acc;
+        }, {});
+
+        $('#statPeserta').textContent = profilesRes.count ?? 0;
+        $('#statKuis').textContent = quizzes.length;
+        $('#statAktif').textContent = quizzes.filter((q) => ['menunggu', 'berjalan'].includes(q.status)).length;
+        $('#statNilai').textContent = scores.length
+          ? round(scores.reduce((a, b) => a + b, 0) / scores.length)
+          : '—';
+
+        renderQuizTable(quizzes, countByQuiz);
+      } catch (error) {
+        console.error(error);
+        $('#quizTable').innerHTML = emptyState('⚠️', 'Gagal memuat data', error.message);
+        toast(error.message, 'error');
+      }
+    }
+
+    function renderQuizTable(quizzes, countByQuiz) {
+      if (!quizzes.length) {
+        $('#quizTable').innerHTML = emptyState('🗂️', 'Belum ada kuis', 'Buat kuis pertama dari halaman Manajemen Kuis.');
+        return;
+      }
+
+      const rows = quizzes.map((quiz) => `
+        <tr>
+          <td>
+            <div class="name">${escapeHtml(quiz.title)}</div>
+            <div class="sub">${escapeHtml(quiz.description || 'Tanpa deskripsi')}</div>
+          </td>
+          <td>${statusBadge(quiz.status)}</td>
+          <td class="nowrap">${quiz.duration_minutes} menit</td>
+          <td class="nowrap">${countByQuiz[quiz.id] ?? 0} peserta</td>
+          <td class="nowrap sub">${formatDate(quiz.created_at, false)}</td>
+          <td>
+            <div class="actions">
+              <a class="btn btn-sm btn-soft" href="quiz.html?id=${quiz.id}">Kelola</a>
+              ${['menunggu', 'berjalan'].includes(quiz.status)
+                ? `<a class="btn btn-sm" href="live.html?id=${quiz.id}">Live</a>`
+                : ''}
+              ${quiz.status === 'selesai'
+                ? `<a class="btn btn-sm" href="leaderboard.html?id=${quiz.id}">Peringkat</a>`
+                : ''}
+            </div>
+          </td>
+        </tr>
+      `).join('');
+
+      $('#quizTable').innerHTML = `
+        <div class="table-wrap">
+          <table class="data">
+            <thead>
+              <tr><th>Kuis</th><th>Status</th><th>Durasi</th><th>Peserta</th><th>Dibuat</th><th></th></tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>`;
+    }
+  </script>
+</body>
+</html>
