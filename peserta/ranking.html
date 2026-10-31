@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Peringkat Kuis — Kuis Bahasa C</title>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+  <div class="rank-page">
+    <div class="rank-shell">
+      <div class="rank-brand">
+        <a class="brand" href="home.html" style="text-decoration:none;color:inherit">
+          <span class="brand-mark">C</span>
+          <span class="brand-text">Kuis Bahasa C<small>Peringkat Akhir</small></span>
+        </a>
+        <a class="btn btn-sm" href="home.html">Beranda</a>
+      </div>
+
+      <div id="rankArea">
+        <div class="panel">
+          <div class="loading-block"><span class="spinner"></span><span>Memuat peringkat...</span></div>
+        </div>
+      </div>
+
+      <p class="tiny muted center" style="margin-top:18px">
+        Peringkat menampilkan nama peserta saja. Nilai dan poin tidak ditampilkan kepada peserta.
+      </p>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script type="module">
+    import { requireAuth } from '../js/auth.js';
+    import { sb } from '../js/supabase.js';
+    import { getPublicRanking } from '../js/quiz.js';
+    import { watchQuiz } from '../js/realtime.js';
+    import { $, escapeHtml, toast, emptyState } from '../js/ui.js';
+
+    const quizId = new URLSearchParams(location.search).get('quiz');
+    let poller = null;
+
+    const profile = await requireAuth('peserta');
+    if (profile && quizId) init();
+    else if (profile) location.replace('home.html');
+
+    async function init() {
+      try {
+        const { data: quiz } = await sb
+          .from('quizzes')
+          .select('id, title, status, ended_at')
+          .eq('id', quizId)
+          .maybeSingle();
+
+        if (!quiz) {
+          $('#rankArea').innerHTML = `<div class="panel">${emptyState('🔍', 'Kuis tidak ditemukan', 'Kembali ke beranda untuk melihat riwayat kuis.')}</div>`;
+          return;
+        }
+
+        if (quiz.status !== 'selesai') {
+          renderWaiting(quiz);
+          watchQuiz(quizId, (row) => {
+            if (row.status === 'selesai') loadRanking(quiz);
+          }, () => toast('Realtime terputus, mencoba lagi berkala.', 'info'));
+          poller = setInterval(async () => {
+            const { data } = await sb.from('quizzes').select('status').eq('id', quizId).maybeSingle();
+            if (data?.status === 'selesai') {
+              clearInterval(poller);
+              loadRanking(quiz);
+            }
+          }, 8000);
+          return;
+        }
+
+        await loadRanking(quiz);
+      } catch (error) {
+        toast(error.message, 'error');
+        $('#rankArea').innerHTML = `<div class="panel">${emptyState('⚠️', 'Gagal memuat peringkat', error.message)}</div>`;
+      }
+    }
+
+    function renderWaiting(quiz) {
+      $('#rankArea').innerHTML = `
+        <div class="stage-card">
+          <div class="stage-emoji">⏳</div>
+          <h2>${escapeHtml(quiz.title)}</h2>
+          <p class="lead">Peringkat akan tampil setelah instruktur mengakhiri kuis.</p>
+          <div class="pulse-dots"><i></i><i></i><i></i></div>
+          <div class="stage-note">Halaman ini akan otomatis berganti ketika kuis selesai.</div>
+        </div>`;
+    }
+
+    async function loadRanking(quiz) {
+      clearInterval(poller);
+      try {
+        const rows = await getPublicRanking(quizId);
+        render(quiz, rows);
+      } catch (error) {
+        renderWaiting(quiz);
+        toast(error.message, 'error');
+      }
+    }
+
+    function render(quiz, rows) {
+      if (!rows.length) {
+        $('#rankArea').innerHTML = `<div class="panel">${emptyState('👥', 'Belum ada peserta', 'Kuis ini tidak memiliki peserta.')}</div>`;
+        return;
+      }
+
+      const first = rows.find((r) => r.rank_no === 1) ?? rows[0];
+      const second = rows.find((r) => r.rank_no === 2) ?? null;
+      const third = rows.find((r) => r.rank_no === 3) ?? null;
+      const rest = rows.filter((r) => ![1, 2, 3].includes(r.rank_no));
+      const myName = (profile.full_name ?? '').trim().toLowerCase();
+      const isMe = (row) => (row.full_name ?? '').trim().toLowerCase() === myName;
+
+      $('#rankArea').innerHTML = `
+        <div class="podium-panel">
+          <div class="podium-head">
+            <span class="eyebrow">Peringkat akhir</span>
+            <h2>${escapeHtml(quiz.title)}</h2>
+            <p>${rows.length} peserta · tanpa nilai</p>
+          </div>
+
+          <div class="podium">
+            ${podiumPlace(second, 2, '🐨', isMe)}
+            ${podiumPlace(first, 1, '🦉', isMe)}
+            ${podiumPlace(third, 3, '🐹', isMe)}
+          </div>
+
+          ${rest.length ? `
+            <div class="rank-list">
+              ${rest.map((row) => `
+                <div class="rank-item ${isMe(row) ? 'you' : ''}">
+                  <span class="no">#${row.rank_no}</span>
+                  <span class="who">${escapeHtml(row.full_name)} ${isMe(row) ? '<span class="badge badge-berjalan" style="margin-left:6px">Kamu</span>' : ''}</span>
+                </div>
+              `).join('')}
+            </div>` : ''}
+        </div>
+      `;
+    }
+
+    function podiumPlace(row, place, mascot, isMe) {
+      const labels = { 1: 'Juara 1', 2: 'Juara 2', 3: 'Juara 3' };
+      const mine = row && isMe(row);
+      return `
+        <div class="podium-place ${place === 1 ? 'first' : place === 2 ? 'second' : 'third'}">
+          <div class="podium-mascot">
+            ${place === 1 ? '<span class="podium-crown">👑</span>' : ''}
+            ${mascot}
+          </div>
+          <div class="podium-name">
+            ${escapeHtml(row?.full_name ?? '—')}${mine ? ' ★' : ''}
+          </div>
+          <div class="podium-block">
+            <div class="num">${place}</div>
+            <div class="label">${labels[place]}</div>
+          </div>
+        </div>`;
+    }
+
+    window.addEventListener('beforeunload', () => clearInterval(poller));
+  </script>
+</body>
+</html>

@@ -60,6 +60,11 @@ export function sanitizeHtml(html) {
 }
 
 /* ----------------------------- format ----------------------------- */
+export function safeUrl(url) {
+  const value = String(url ?? '').trim();
+  return /^https?:\/\//i.test(value) ? value : '';
+}
+
 export function formatDate(iso, withTime = true) {
   if (!iso) return '—';
   const d = new Date(iso);
@@ -168,6 +173,160 @@ export function setBusy(button, busy, busyText = 'Memproses...') {
   }
 }
 
+/* ----------------------------- notifikasi materi ----------------------------- */
+const NOTIF_LIMIT = 6;
+const notifSeenKey = (userId) => `kuisc.notif.seen.${userId ?? 'anon'}`;
+
+function readSeenAt(userId) {
+  try { return localStorage.getItem(notifSeenKey(userId)) ?? ''; } catch { return ''; }
+}
+
+function writeSeenAt(userId, iso) {
+  try { if (iso) localStorage.setItem(notifSeenKey(userId), iso); } catch { /* storage diblokir browser */ }
+}
+
+const BELL_ICON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>`;
+
+/**
+ * Menu notifikasi di topbar: daftar materi terbit terbaru dari instruktur.
+ * Status "sudah dibaca" disimpan per akun di localStorage berdasarkan created_at terbaru.
+ */
+export async function mountNotifications(profile, materialsHref = '../peserta/materials.html') {
+  const actions = document.querySelector('.topbar-actions');
+  if (!actions || !sb || document.getElementById('notifWrap')) return;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'notif';
+  wrap.id = 'notifWrap';
+  wrap.innerHTML = `
+    <button class="notif-btn" id="notifBtn" type="button" aria-label="Notifikasi materi" aria-expanded="false" aria-controls="notifPanel">
+      ${BELL_ICON}
+      <span class="notif-dot hidden" id="notifDot">0</span>
+    </button>
+    <div class="notif-panel hidden" id="notifPanel" role="dialog" aria-label="Notifikasi materi terbaru">
+      <div class="notif-head">
+        <div><strong>Notifikasi</strong><span>Materi terbaru dari instruktur</span></div>
+        <span class="count-pill" id="notifCount">—</span>
+      </div>
+      <div class="notif-list" id="notifList"><div class="notif-empty">Memuat notifikasi...</div></div>
+      <div class="notif-foot"><a href="${escapeHtml(materialsHref)}">Lihat semua materi →</a></div>
+    </div>`;
+  actions.prepend(wrap);
+
+  const btn = wrap.querySelector('#notifBtn');
+  const panel = wrap.querySelector('#notifPanel');
+  const dot = wrap.querySelector('#notifDot');
+  const count = wrap.querySelector('#notifCount');
+  const list = wrap.querySelector('#notifList');
+
+  let items = [];
+  let open = false;
+
+  const newestAt = () => items[0]?.created_at ?? '';
+  const unseen = () => {
+    const seen = readSeenAt(profile?.id);
+    if (!seen) return [...items];
+    const seenTime = new Date(seen).getTime();
+    return items.filter((item) => new Date(item.created_at).getTime() > seenTime);
+  };
+
+  function paintBadge() {
+    const total = unseen().length;
+    dot.textContent = total > 9 ? '9+' : String(total);
+    dot.classList.toggle('hidden', total === 0);
+    dot.classList.remove('bump');
+    if (total > 0) {
+      void dot.offsetWidth;
+      dot.classList.add('bump');
+    }
+    count.textContent = !items.length ? 'Kosong' : total ? `${total} baru` : 'Semua dibaca';
+  }
+
+  function render(pending) {
+    if (!items.length) {
+      list.innerHTML = `<div class="notif-empty"><span class="emoji">▤</span>Belum ada materi terbaru.<br>Update dari instruktur akan muncul di sini.</div>`;
+      return;
+    }
+    list.innerHTML = items.map((item) => {
+      const isNew = pending.has(item.id);
+      return `<a class="notif-item${isNew ? ' unread' : ''}" href="${escapeHtml(materialsHref)}">
+        <span class="ico">▤</span>
+        <span class="body">
+          <h5>${escapeHtml(item.title)}</h5>
+          <p>${escapeHtml(item.description || 'Materi baru sudah diterbitkan. Buka halaman materi untuk membacanya.')}</p>
+          <time datetime="${escapeHtml(item.created_at)}">${escapeHtml(formatDate(item.created_at, false))}</time>
+        </span>
+        ${isNew ? '<span class="new" aria-label="Belum dibaca"></span>' : ''}
+      </a>`;
+    }).join('');
+  }
+
+  async function refresh() {
+    const { data, error } = await sb
+      .from('materials')
+      .select('id, title, description, created_at')
+      .eq('is_published', true)
+      .order('created_at', { ascending: false })
+      .limit(NOTIF_LIMIT);
+
+    if (error) throw error;
+    items = data ?? [];
+  }
+
+  async function openPanel() {
+    if (open) return;
+    open = true;
+    panel.classList.remove('hidden');
+    btn.setAttribute('aria-expanded', 'true');
+    list.innerHTML = loadingState('Memuat notifikasi...');
+
+    try {
+      await refresh();
+    } catch {
+      list.innerHTML = `<div class="notif-empty"><span class="emoji">⚠️</span>Gagal memuat notifikasi.<br>Coba buka lagi sebentar lagi.</div>`;
+      return;
+    }
+
+    const pending = new Set(unseen().map((item) => item.id));
+    render(pending);
+    count.textContent = !items.length ? 'Kosong' : pending.size ? `${pending.size} baru` : 'Semua dibaca';
+
+    // Membuka panel dianggap sudah membaca semua update yang tampil.
+    writeSeenAt(profile?.id, newestAt());
+    dot.classList.add('hidden');
+  }
+
+  function closePanel() {
+    if (!open) return;
+    open = false;
+    panel.classList.add('hidden');
+    btn.setAttribute('aria-expanded', 'false');
+  }
+
+  btn.addEventListener('click', (event) => {
+    event.stopPropagation();
+    if (open) closePanel();
+    else openPanel();
+  });
+
+  document.addEventListener('click', (event) => {
+    if (open && !wrap.contains(event.target)) closePanel();
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && open) {
+      closePanel();
+      btn.focus();
+    }
+  });
+
+  try {
+    await refresh();
+  } catch {
+    items = [];
+  }
+  paintBadge();
+}
+
 /* ----------------------------- shell layout ----------------------------- */
 const ADMIN_NAV = [
   { key: 'dashboard', href: 'admin/dashboard.html', icon: '◈', label: 'Dashboard' },
@@ -228,6 +387,12 @@ export function mountShell({ profile, role, active = '', title = '', subtitle = 
   if (subEl && subtitle) subEl.textContent = subtitle;
 
   wireMobileSidebar();
+
+  // Menu notifikasi materi hanya untuk peserta (admin punya panel materi sendiri).
+  if (role !== 'admin') {
+    mountNotifications(profile, `${root}peserta/materials.html`);
+  }
+
   return { root };
 }
 

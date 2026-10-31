@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ruang Tunggu — Kuis Bahasa C</title>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+  <div class="stage-page">
+    <div style="width:100%;max-width:520px">
+      <div class="rank-brand">
+        <a class="brand" href="home.html" style="text-decoration:none;color:inherit">
+          <span class="brand-mark">C</span>
+          <span class="brand-text">Kuis Bahasa C<small>Ruang Peserta</small></span>
+        </a>
+        <a class="btn btn-sm" href="home.html">Beranda</a>
+      </div>
+
+      <div class="stage-card" id="lobbyCard">
+        <div class="loading-block"><span class="spinner"></span><span>Memuat ruang tunggu...</span></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script type="module">
+    import { requireAuth } from '../js/auth.js';
+    import { sb } from '../js/supabase.js';
+    import { getLobbyInfo } from '../js/quiz.js';
+    import { watchQuiz } from '../js/realtime.js';
+    import { $, toast, escapeHtml } from '../js/ui.js';
+
+    const quizId = new URLSearchParams(location.search).get('quiz');
+    let poller = null;
+    let routed = false;
+    let durationMinutes = null;
+
+    const profile = await requireAuth('peserta');
+    if (profile && quizId) {
+      start();
+    } else if (profile) {
+      location.replace('home.html');
+    }
+
+    async function start() {
+      try {
+        const { data: quiz } = await sb
+          .from('quizzes')
+          .select('duration_minutes')
+          .eq('id', quizId)
+          .maybeSingle();
+        durationMinutes = quiz?.duration_minutes ?? null;
+
+        await refresh(true);
+
+        watchQuiz(quizId, (row) => {
+          if (row.status === 'berjalan') goToQuizOrWaiting();
+          else if (row.status === 'selesai') goToRanking();
+          else refresh(false);
+        }, () => toast('Koneksi realtime terputus, mencoba menyegarkan berkala.', 'info'));
+
+        poller = setInterval(() => refresh(false), 4000);
+      } catch (error) {
+        toast(error.message, 'error');
+        $('#lobbyCard').innerHTML = renderError(error.message);
+      }
+    }
+
+    async function refresh(firstLoad) {
+      try {
+        const info = await getLobbyInfo(quizId);
+        if (info.status === 'berjalan') return goToQuizOrWaiting();
+        if (info.status === 'selesai') return goToRanking();
+        if (info.status === 'draft') {
+          $('#lobbyCard').innerHTML = renderError('Kuis ini belum dibuka oleh instruktur.');
+          return;
+        }
+
+        if (firstLoad) {
+          $('#lobbyCard').innerHTML = `
+            <div class="stage-emoji">⏳</div>
+            <h2>${escapeHtml(info.title)}</h2>
+            <p class="lead">Menunggu instruktur memulai kuis...</p>
+            <div class="pulse-dots"><i></i><i></i><i></i></div>
+
+            <div class="lobby-stats">
+              <div class="lobby-stat">
+                <strong id="participantCount">${info.participant_count}</strong>
+                <span>Peserta masuk</span>
+              </div>
+              <div class="lobby-stat">
+                <strong>${durationMinutes ?? '—'}</strong>
+                <span>Menit durasi</span>
+              </div>
+            </div>
+
+            <div class="stage-note">
+              Kamu masuk sebagai <strong>${escapeHtml(profile.full_name)}</strong>.
+              Jangan tutup halaman ini — soal akan terbuka otomatis saat instruktur menekan START.
+            </div>
+          `;
+        } else {
+          const countEl = $('#participantCount');
+          if (countEl) countEl.textContent = info.participant_count;
+        }
+      } catch (error) {
+        if (firstLoad) $('#lobbyCard').innerHTML = renderError(error.message);
+      }
+    }
+
+    function goToQuizOrWaiting() {
+      if (routed) return;
+      routed = true;
+      clearInterval(poller);
+      // Halaman quiz akan mengarahkan ke waiting.html bila jawaban sudah dikumpulkan.
+      location.replace(`quiz.html?quiz=${quizId}`);
+    }
+
+    function goToRanking() {
+      if (routed) return;
+      routed = true;
+      clearInterval(poller);
+      location.replace(`ranking.html?quiz=${quizId}`);
+    }
+
+    function renderError(message) {
+      return `
+        <div class="stage-emoji">⚠️</div>
+        <h2>Ruang tunggu tidak tersedia</h2>
+        <p class="lead">${escapeHtml(message)}</p>
+        <a class="btn btn-primary btn-block mt-3" href="home.html">Kembali ke Beranda</a>`;
+    }
+
+    window.addEventListener('beforeunload', () => clearInterval(poller));
+  </script>
+</body>
+</html>

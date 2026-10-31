@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ikuti Kuis — Kuis Bahasa C</title>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" id="sidebar"></aside>
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+    <div class="main">
+      <header class="topbar">
+        <button class="hamburger" id="sidebarToggle" aria-label="Buka menu"><span></span><span></span><span></span></button>
+        <div>
+          <h1 id="pageTitle">Ikuti Kuis</h1>
+          <div class="sub" id="pageSub">Masukkan token dari instruktur</div>
+        </div>
+        <div class="topbar-actions">
+          <a class="btn btn-sm" href="home.html">Beranda</a>
+        </div>
+      </header>
+
+      <main class="content">
+        <div class="stage-page" style="min-height:auto;padding:10px 0 40px;background:transparent">
+          <div class="stage-card">
+            <div class="stage-emoji">⚿</div>
+            <h2>Masukkan Token Kuis</h2>
+            <p class="lead">Token berisi 6 karakter huruf/angka. Pastikan kamu sudah login dengan akun sendiri.</p>
+
+            <div id="joinError" class="form-error hidden" style="margin-top:18px;text-align:left"></div>
+
+            <form id="joinForm" style="margin-top:20px">
+              <input class="input token-input" id="tokenInput" maxlength="6" autocomplete="off" spellcheck="false"
+                     placeholder="C7KQ2M" aria-label="Token kuis" required>
+              <button class="btn btn-primary btn-block btn-lg mt-3" id="joinBtn" type="submit">Masuk Ruang Tunggu</button>
+            </form>
+
+            <div class="stage-note">
+              Satu akun hanya bisa mengikuti satu kuis yang sama sebanyak satu kali.
+              Jika kamu sudah terdaftar, kamu akan diarahkan kembali ke ruang kuis.
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script type="module">
+    import { requireAuth } from '../js/auth.js';
+    import { joinQuizWithToken, participantRoute } from '../js/quiz.js';
+    import { $, mountShell, toast, setBusy } from '../js/ui.js';
+
+    const profile = await requireAuth('peserta');
+    const tokenInput = $('#tokenInput');
+    const errorBox = $('#joinError');
+
+    if (profile) {
+      mountShell({ profile, role: 'peserta', active: 'join', title: 'Ikuti Kuis', subtitle: 'Masukkan token dari instruktur' });
+
+      const preset = new URLSearchParams(location.search).get('token');
+      if (preset) tokenInput.value = preset.toUpperCase().slice(0, 6);
+
+      tokenInput.addEventListener('input', () => {
+        tokenInput.value = tokenInput.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+        errorBox.classList.add('hidden');
+      });
+
+      $('#joinForm').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        errorBox.classList.add('hidden');
+
+        const code = tokenInput.value.trim().toUpperCase();
+        if (code.length !== 6) {
+          errorBox.textContent = 'Token harus terdiri dari 6 karakter.';
+          errorBox.classList.remove('hidden');
+          return;
+        }
+
+        const button = $('#joinBtn');
+        setBusy(button, true, 'Memeriksa token...');
+        try {
+          const result = await joinQuizWithToken(code);
+          toast(`Token valid: ${result.quiz_title}`);
+          const route = participantRoute(result.quiz_id, result.status, result.submitted);
+          setTimeout(() => { location.href = route; }, 350);
+        } catch (error) {
+          errorBox.textContent = error.message;
+          errorBox.classList.remove('hidden');
+          setBusy(button, false);
+        }
+      });
+
+      if (preset) $('#joinForm').requestSubmit();
+    }
+  </script>
+</body>
+</html>

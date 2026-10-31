@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mengerjakan Kuis — Kuis Bahasa C</title>
+  <link rel="stylesheet" href="../css/style.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github-dark.min.css">
+</head>
+<body>
+  <div class="quiz-page">
+    <header class="quiz-top">
+      <div class="quiz-top-inner">
+        <span class="brand-mark" style="width:34px;height:34px;font-size:13px">C</span>
+        <div class="title">
+          <strong id="quizTitle">Memuat kuis...</strong>
+          <span id="quizMeta">Menyiapkan soal</span>
+        </div>
+        <div class="timer" id="timer">⏱ <span id="timerText">--:--</span></div>
+      </div>
+    </header>
+
+    <main class="quiz-wrap">
+      <section class="question-card" id="questionCard">
+        <div class="loading-block"><span class="spinner"></span><span>Menyiapkan soal...</span></div>
+      </section>
+
+      <aside class="quiz-side">
+        <div class="side-card">
+          <h4>Navigasi Soal</h4>
+          <div class="qnav" id="qnav"></div>
+          <div class="legend">
+            <span><i class="cur"></i> Sedang dibuka</span>
+            <span><i class="done"></i> Sudah dijawab</span>
+            <span><i></i> Belum dijawab</span>
+          </div>
+        </div>
+
+        <div class="side-card">
+          <h4>Progres</h4>
+          <div class="progress-line"><i id="progressBar" style="width:0%"></i></div>
+          <div class="flex-between tiny muted" style="margin-top:6px">
+            <span id="answeredLabel">0 dijawab</span>
+            <span id="totalLabel">/ 0</span>
+          </div>
+          <button class="btn btn-primary btn-block" id="submitBtn" type="button" style="margin-top:12px">Selesai Mengerjakan</button>
+        </div>
+
+        <div class="side-card">
+          <div class="tiny muted">
+            Jawaban tersimpan otomatis setiap kali kamu memilih opsi.
+            Kamu boleh mengganti jawaban sampai menekan <strong>Selesai Mengerjakan</strong>.
+          </div>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+  <script type="module">
+    import { requireAuth } from '../js/auth.js';
+    import {
+      getQuizState, getQuizQuestions, getMyAnswers, saveAnswer,
+      submitParticipant, createCountdown,
+    } from '../js/quiz.js';
+    import { watchQuiz } from '../js/realtime.js';
+    import {
+      $, $$, toast, escapeHtml, formatClock, shuffleWithSeed, setBusy,
+    } from '../js/ui.js';
+
+    const quizId = new URLSearchParams(location.search).get('quiz');
+    let state = null;
+    let questions = [];
+    let answers = {};
+    let current = 0;
+    let countdown = null;
+    let submitting = false;
+    let lastEndsAt = null;
+
+    const profile = await requireAuth('peserta');
+    if (profile && quizId) init();
+    else if (profile) location.replace('home.html');
+
+    async function init() {
+      try {
+        state = await getQuizState(quizId);
+
+        if (state.status === 'menunggu') return location.replace(`lobby.html?quiz=${quizId}`);
+        if (state.status === 'selesai') return location.replace(`ranking.html?quiz=${quizId}`);
+        if (state.participant?.submitted_at) return location.replace(`waiting.html?quiz=${quizId}`);
+        if (state.status !== 'berjalan') return location.replace('home.html');
+
+        questions = await getQuizQuestions(quizId);
+        if (state.shuffle) questions = shuffleWithSeed(questions, state.participant?.id ?? state.quiz_id);
+
+        const stored = await getMyAnswers(state.participant.id);
+        answers = stored.reduce((acc, row) => {
+          if (row.selected_answer) acc[row.question_id] = row.selected_answer;
+          return acc;
+        }, {});
+
+        $('#quizTitle').textContent = state.title;
+        $('#quizMeta').textContent = `${questions.length} soal · jawaban tersimpan otomatis`;
+
+        const firstUnanswered = questions.findIndex((q) => !answers[q.id]);
+        current = firstUnanswered >= 0 ? firstUnanswered : 0;
+
+        if (!questions.length) {
+          $('#questionCard').innerHTML = `
+            <div class="empty">
+              <div class="emoji">📭</div>
+              <h4>Belum ada soal</h4>
+              <p>Instruktur belum menambahkan soal pada kuis ini. Tunggu instruktur mengakhiri kuis.</p>
+            </div>`;
+          $('#submitBtn').disabled = true;
+          return;
+        }
+
+        renderQuestion();
+        renderNav();
+        renderProgress();
+
+        lastEndsAt = state.ends_at;
+        countdown = createCountdown({
+          endsAt: state.ends_at,
+          serverNow: state.server_now,
+          onTick: updateTimer,
+          onEnd: onTimeUp,
+        });
+        countdown.start();
+
+        watchQuiz(quizId, handleQuizUpdate, () => {
+          toast('Koneksi realtime terputus. Sisa waktu tetap dihitung dari data server terakhir.', 'info');
+        });
+      } catch (error) {
+        console.error(error);
+        $('#questionCard').innerHTML = `
+          <div class="empty">
+            <div class="emoji">⚠️</div>
+            <h4>Gagal memuat kuis</h4>
+            <p>${escapeHtml(error.message)}</p>
+            <a class="btn btn-primary mt-2" href="home.html">Kembali ke Beranda</a>
+          </div>`;
+        $('#timerText').textContent = '--:--';
+      }
+    }
+
+    function handleQuizUpdate(row) {
+      if (row.status === 'selesai') {
+        countdown?.stop();
+        return location.replace(`ranking.html?quiz=${quizId}`);
+      }
+      if (row.status === 'berjalan' && row.ends_at) {
+        const newEnds = new Date(row.ends_at).getTime();
+        if (lastEndsAt && newEnds !== new Date(lastEndsAt).getTime() && !submitting) {
+          const diffMinutes = Math.round((newEnds - new Date(lastEndsAt).getTime()) / 60000);
+          toast(diffMinutes === 0
+            ? 'Waktu kuis diperbarui instruktur.'
+            : `Waktu kuis ${diffMinutes > 0 ? 'ditambah' : 'dikurangi'} ${Math.abs(diffMinutes)} menit.`, 'info');
+        }
+        lastEndsAt = row.ends_at;
+        countdown?.sync(row.ends_at);
+      }
+    }
+
+    function updateTimer(seconds) {
+      const text = $('#timerText');
+      const wrap = $('#timer');
+      if (!text || !wrap) return;
+      text.textContent = formatClock(seconds);
+      wrap.classList.toggle('warning', seconds <= 300 && seconds > 60);
+      wrap.classList.toggle('danger', seconds <= 60);
+    }
+
+    function onTimeUp() {
+      if (submitting) return;
+      toast('Waktu habis. Jawaban dikumpulkan otomatis.', 'info');
+      doSubmit(true);
+    }
+
+    /* ------------------------------ render ------------------------------ */
+    function renderQuestion() {
+      const question = questions[current];
+      if (!question) return;
+
+      const selected = answers[question.id];
+      const optionKeys = ['A', 'B', 'C', 'D'];
+
+      $('#questionCard').innerHTML = `
+        <div class="question-head">
+          <span class="q-index">Soal ${current + 1} dari ${questions.length}</span>
+          <span class="q-points">${question.points} poin</span>
+        </div>
+        <div class="question-text">${escapeHtml(question.question_text)}</div>
+        ${question.code_snippet ? `
+          <div class="code-block">
+            <div class="code-label">Kode C</div>
+            <pre><code class="language-c">${escapeHtml(question.code_snippet)}</code></pre>
+          </div>` : ''}
+        <div class="options">
+          ${optionKeys.map((key) => {
+            const text = question[`option_${key.toLowerCase()}`];
+            return `
+              <button class="option ${selected === key ? 'selected' : ''}" type="button" data-answer="${key}">
+                <span class="key">${key}</span>
+                <span class="txt">${escapeHtml(text)}</span>
+                <span class="mark">✓</span>
+              </button>`;
+          }).join('')}
+        </div>
+        <div class="quiz-foot">
+          <button class="btn btn-sm" type="button" id="prevBtn" ${current === 0 ? 'disabled' : ''}>← Sebelumnya</button>
+          <div class="save-state" id="saveState">Tersimpan otomatis</div>
+          <button class="btn btn-sm btn-dark" type="button" id="nextBtn" ${current === questions.length - 1 ? 'disabled' : ''}>Berikutnya →</button>
+        </div>
+      `;
+
+      if (globalThis.hljs) {
+        $$('#questionCard pre code').forEach((block) => {
+          try { globalThis.hljs.highlightElement(block); } catch { /* abaikan */ }
+        });
+      }
+
+      $$('#questionCard .option').forEach((button) => {
+        button.addEventListener('click', () => chooseAnswer(button.dataset.answer));
+      });
+      $('#prevBtn')?.addEventListener('click', () => goTo(current - 1));
+      $('#nextBtn')?.addEventListener('click', () => goTo(current + 1));
+    }
+
+    function renderNav() {
+      $('#qnav').innerHTML = questions.map((question, index) => `
+        <button type="button"
+          class="${answers[question.id] ? 'answered' : ''} ${index === current ? 'current' : ''}"
+          data-goto="${index}" aria-label="Soal ${index + 1}">${index + 1}</button>
+      `).join('');
+
+      $$('#qnav button').forEach((button) => {
+        button.addEventListener('click', () => goTo(Number(button.dataset.goto)));
+      });
+    }
+
+    function renderProgress() {
+      const answered = questions.filter((q) => answers[q.id]).length;
+      $('#answeredLabel').textContent = `${answered} dijawab`;
+      $('#totalLabel').textContent = `/ ${questions.length}`;
+      $('#progressBar').style.width = questions.length ? `${(answered / questions.length) * 100}%` : '0%';
+    }
+
+    function goTo(index) {
+      if (index < 0 || index >= questions.length) return;
+      current = index;
+      renderQuestion();
+      renderNav();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function paintOptions() {
+      const question = questions[current];
+      if (!question) return;
+      $$('#questionCard .option').forEach((button) => {
+        button.classList.toggle('selected', answers[question.id] === button.dataset.answer);
+      });
+    }
+
+    function setSaveState(status, message) {
+      const el = $('#saveState');
+      if (!el) return;
+      el.classList.toggle('saved', status === 'saved');
+      el.textContent = message ?? (status === 'saving'
+        ? 'Menyimpan...'
+        : status === 'error'
+          ? 'Gagal menyimpan'
+          : 'Tersimpan ✓');
+    }
+
+    /* ------------------------------ aksi ------------------------------ */
+    let saveChain = Promise.resolve();
+
+    function enqueueSave(questionId, value) {
+      setSaveState('saving');
+      // Simpan berurutan agar klik cepat tidak saling menimpa di server.
+      saveChain = saveChain.then(async () => {
+        try {
+          await saveAnswer(quizId, questionId, value);
+          if (answers[questionId] === value && questions[current]?.id === questionId) {
+            setSaveState('saved');
+          }
+        } catch (error) {
+          if (answers[questionId] === value && questions[current]?.id === questionId) {
+            setSaveState('error');
+          }
+          toast(error.message, 'error');
+        }
+      });
+    }
+
+    function chooseAnswer(key) {
+      const question = questions[current];
+      if (!question || submitting) return;
+
+      answers[question.id] = key;
+      paintOptions();
+      renderNav();
+      renderProgress();
+      enqueueSave(question.id, key);
+    }
+
+    $('#submitBtn').addEventListener('click', () => {
+      if (submitting) return;
+      const unanswered = questions.filter((q) => !answers[q.id]).length;
+      const message = unanswered
+        ? `Masih ada ${unanswered} soal belum dijawab. Kumpulkan sekarang? Jawaban tidak bisa diubah setelah dikirim.`
+        : 'Kumpulkan jawaban sekarang? Jawaban tidak bisa diubah setelah dikirim.';
+      if (confirm(message)) doSubmit(false);
+    });
+
+    async function doSubmit(auto) {
+      if (submitting) return;
+      submitting = true;
+      countdown?.stop();
+
+      const button = $('#submitBtn');
+      setBusy(button, true, auto ? 'Mengumpulkan...' : 'Mengirim jawaban...');
+      try {
+        // Tunggu antrean autosave selesai agar jawaban terakhir ikut terkunci.
+        await saveChain;
+        await submitParticipant(quizId);
+        location.replace(`waiting.html?quiz=${quizId}`);
+      } catch (error) {
+        submitting = false;
+        toast(error.message, 'error');
+        setBusy(button, false);
+        if (countdown && countdown.remainingMs() > 0) countdown.start();
+      }
+    }
+
+    window.addEventListener('beforeunload', () => countdown?.stop());
+  </script>
+</body>
+</html>

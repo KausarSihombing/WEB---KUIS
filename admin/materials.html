@@ -109,14 +109,14 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/highlight.js@11.9.0/lib/common.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
   <script type="module">
     import { requireAuth } from '../js/auth.js';
     import {
       listMaterials, saveMaterial, deleteMaterial, uploadMaterialFile,
     } from '../js/admin.js';
     import {
-      $, mountShell, toast, escapeHtml, formatDate, sanitizeHtml,
+      $, mountShell, toast, escapeHtml, formatDate, sanitizeHtml, safeUrl,
       openModal, closeModal, setBusy, emptyState, loadingState,
     } from '../js/ui.js';
 
@@ -280,8 +280,9 @@
       $('#readerBody').innerHTML = material.content
         ? sanitizeHtml(material.content)
         : '<p class="muted">Materi ini belum memiliki isi teks.</p>';
-      $('#readerFile').innerHTML = material.file_url
-        ? `<a class="btn btn-soft btn-sm" href="${escapeHtml(material.file_url)}" target="_blank" rel="noopener noreferrer">Buka lampiran ↗</a>`
+      const fileUrl = safeUrl(material.file_url);
+      $('#readerFile').innerHTML = fileUrl
+        ? `<a class="btn btn-soft btn-sm" href="${escapeHtml(fileUrl)}" target="_blank" rel="noopener noreferrer">Buka lampiran ↗</a>`
         : '';
       openModal('readerModal');
 

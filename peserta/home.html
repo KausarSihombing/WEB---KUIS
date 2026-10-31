@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Beranda Peserta — Kuis Bahasa C</title>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" id="sidebar"></aside>
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+    <div class="main">
+      <header class="topbar">
+        <button class="hamburger" id="sidebarToggle" aria-label="Buka menu"><span></span><span></span><span></span></button>
+        <div>
+          <h1 id="pageTitle">Beranda</h1>
+          <div class="sub" id="pageSub">Ruang belajar dan riwayat kuismu</div>
+        </div>
+        <div class="topbar-actions">
+          <a class="btn btn-primary btn-sm" href="join.html">⚿ Ikuti Kuis</a>
+        </div>
+      </header>
+
+      <main class="content">
+        <div class="page-head">
+          <div>
+            <h2 id="greeting">Halo!</h2>
+            <p>Masukkan token saat instruktur membuka kuis baru.</p>
+          </div>
+          <div class="page-actions">
+            <a class="btn btn-sm" href="materials.html">Baca Materi</a>
+          </div>
+        </div>
+
+        <div class="stat-grid">
+          <div class="stat accent">
+            <div class="top"><span class="label">Kuis Diikuti</span><span class="icon">◈</span></div>
+            <div class="value" id="statIkut">—</div>
+            <div class="foot">Total riwayat kuis</div>
+          </div>
+          <div class="stat">
+            <div class="top"><span class="label">Kuis Selesai</span><span class="icon">✓</span></div>
+            <div class="value" id="statSelesai">—</div>
+            <div class="foot">Sudah diakhiri instruktur</div>
+          </div>
+          <div class="stat">
+            <div class="top"><span class="label">Peringkat Terbaik</span><span class="icon">♛</span></div>
+            <div class="value" id="statRank">—</div>
+            <div class="foot">Dari kuis yang selesai</div>
+          </div>
+          <div class="stat">
+            <div class="top"><span class="label">Materi Tersedia</span><span class="icon">▤</span></div>
+            <div class="value" id="statMateri">—</div>
+            <div class="foot">Materi yang sudah terbit</div>
+          </div>
+        </div>
+
+        <div class="card card-pad" style="background:linear-gradient(135deg,#16994a,#116b38);color:#fff;border:0;margin-bottom:20px">
+          <div class="flex-between" style="flex-wrap:wrap;gap:16px">
+            <div>
+              <span class="eyebrow" style="color:#bbf7d0">Mulai kuis</span>
+              <h3 style="font-size:20px;margin-top:6px;color:#fff">Punya token dari instruktur?</h3>
+              <p style="color:#d1fae5;font-size:12.5px;margin-top:4px">Masukkan token untuk masuk ke ruang tunggu. Satu akun hanya bisa mengikuti kuis yang sama satu kali.</p>
+            </div>
+            <a class="btn btn-lg" href="join.html" style="background:#fff;color:var(--green-700);border-color:#fff">Ikuti Kuis →</a>
+          </div>
+        </div>
+
+        <div class="split-wide">
+          <div class="panel">
+            <div class="panel-head">
+              <div><h3>Riwayat Kuis</h3><p>Kuis yang pernah kamu ikuti</p></div>
+            </div>
+            <div class="panel-body tight" id="historyArea">
+              <div class="loading-block"><span class="spinner"></span><span>Memuat riwayat...</span></div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <div><h3>Materi Terbaru</h3><p>Dari instruktur</p></div>
+              <a class="btn btn-sm btn-ghost" href="materials.html">Semua</a>
+            </div>
+            <div class="panel-body" id="materialArea">
+              <div class="loading-block"><span class="spinner"></span><span>Memuat materi...</span></div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script type="module">
+    import { requireAuth } from '../js/auth.js';
+    import { sb } from '../js/supabase.js';
+    import {
+      $, mountShell, toast, escapeHtml, formatDate, statusBadge, emptyState,
+    } from '../js/ui.js';
+
+    const profile = await requireAuth('peserta');
+
+    if (profile) {
+      mountShell({ profile, role: 'peserta', active: 'home', title: 'Beranda', subtitle: 'Ruang belajar dan riwayat kuismu' });
+      $('#greeting').textContent = `Halo, ${profile.full_name.split(' ')[0]} 👋`;
+      loadHome();
+    }
+
+    async function loadHome() {
+      try {
+        const [historyRes, materialsRes] = await Promise.all([
+          sb.rpc('get_my_participations'),
+          sb.from('materials')
+            .select('id, title, description, created_at')
+            .eq('is_published', true)
+            .order('created_at', { ascending: false })
+            .limit(4),
+        ]);
+
+        if (historyRes.error) throw historyRes.error;
+        if (materialsRes.error) throw materialsRes.error;
+
+        const rows = historyRes.data ?? [];
+        const quizIds = [...new Set(rows.map((row) => row.quiz_id))];
+        let quizMap = {};
+
+        if (quizIds.length) {
+          const { data: quizRows, error: quizError } = await sb
+            .from('quizzes')
+            .select('id, title, status, ended_at')
+            .in('id', quizIds);
+          if (quizError) throw quizError;
+          quizMap = Object.fromEntries((quizRows ?? []).map((q) => [q.id, q]));
+        }
+
+        const history = rows.map((row) => ({ ...row, quizzes: quizMap[row.quiz_id] ?? null }));
+        const materials = materialsRes.data ?? [];
+        const finished = history.filter((row) => row.quizzes?.status === 'selesai');
+        const ranks = finished.map((row) => row.rank).filter((rank) => Number.isFinite(rank));
+
+        $('#statIkut').textContent = history.length;
+        $('#statSelesai').textContent = finished.length;
+        $('#statRank').textContent = ranks.length ? `#${Math.min(...ranks)}` : '—';
+        $('#statMateri').textContent = materials.length;
+
+        renderHistory(history);
+        renderMaterials(materials);
+      } catch (error) {
+        toast(error.message, 'error');
+        $('#historyArea').innerHTML = emptyState('⚠️', 'Gagal memuat riwayat', error.message);
+        $('#materialArea').innerHTML = emptyState('⚠️', 'Gagal memuat materi', error.message);
+      }
+    }
+
+    function renderHistory(history) {
+      if (!history.length) {
+        $('#historyArea').innerHTML = emptyState('🗂️', 'Belum ada riwayat', 'Ikuti kuis dengan token dari instruktur untuk memulai riwayatmu.');
+        return;
+      }
+
+      $('#historyArea').innerHTML = `
+        <div class="table-wrap">
+          <table class="data">
+            <thead><tr><th>Kuis</th><th>Status</th><th>Peringkat</th><th>Diikuti</th><th></th></tr></thead>
+            <tbody>
+              ${history.map((row) => {
+                const quiz = row.quizzes;
+                let action = '';
+                if (quiz?.status === 'menunggu') action = `<a class="btn btn-sm btn-soft" href="lobby.html?quiz=${quiz.id}">Ruang Tunggu</a>`;
+                if (quiz?.status === 'berjalan') action = row.submitted_at
+                  ? `<a class="btn btn-sm" href="waiting.html?quiz=${quiz.id}">Menunggu</a>`
+                  : `<a class="btn btn-sm btn-primary" href="quiz.html?quiz=${quiz.id}">Lanjutkan</a>`;
+                if (quiz?.status === 'selesai') action = `<a class="btn btn-sm" href="ranking.html?quiz=${quiz.id}">Peringkat</a>`;
+
+                return `
+                  <tr>
+                    <td>
+                      <div class="name">${escapeHtml(quiz?.title ?? 'Kuis tidak tersedia')}</div>
+                      <div class="sub">${row.submitted_at ? 'Jawaban terkumpul' : 'Belum mengumpulkan'}</div>
+                    </td>
+                    <td>${statusBadge(quiz?.status)}</td>
+                    <td class="sub">${quiz?.status === 'selesai' && row.rank ? `#${row.rank}` : '—'}</td>
+                    <td class="sub nowrap">${formatDate(row.joined_at, false)}</td>
+                    <td><div class="actions">${action}</div></td>
+                  </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>`;
+    }
+
+    function renderMaterials(materials) {
+      if (!materials.length) {
+        $('#materialArea').innerHTML = emptyState('▤', 'Belum ada materi', 'Materi dari instruktur akan tampil di sini.');
+        return;
+      }
+
+      $('#materialArea').innerHTML = `
+        <div class="material-list">
+          ${materials.map((m) => `
+            <a class="material-item" href="materials.html" style="text-decoration:none;color:inherit">
+              <div class="material-thumb">▤</div>
+              <div>
+                <h4>${escapeHtml(m.title)}</h4>
+                <p>${escapeHtml(m.description || 'Baca materi ini.')}</p>
+                <div class="meta tiny muted">${formatDate(m.created_at, false)}</div>
+              </div>
+            </a>
+          `).join('')}
+        </div>`;
+    }
+  </script>
+</body>
+</html>

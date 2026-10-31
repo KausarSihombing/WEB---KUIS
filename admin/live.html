@@ -78,6 +78,8 @@
           const previous = quiz.status;
           quiz = { ...quiz, ...row };
           if (previous !== row.status) toast(`Status kuis: ${row.status}.`, 'info');
+          const badgeWrap = $('#statusBadgeWrap');
+          if (badgeWrap) badgeWrap.innerHTML = statusBadge(quiz.status);
           renderControlContent();
           renderParticipants();
           startTicker();

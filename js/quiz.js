@@ -61,16 +61,16 @@ export async function getMyAnswers(participantId) {
   return data ?? [];
 }
 
-/** Arahkan peserta sesuai status kuis. */
+/** Arahkan peserta sesuai status kuis (dipakai dari dalam folder /peserta). */
 export function participantRoute(quizId, status, submitted = false) {
-  if (status === 'menunggu') return `peserta/lobby.html?quiz=${quizId}`;
+  if (status === 'menunggu') return `lobby.html?quiz=${quizId}`;
   if (status === 'berjalan') {
     return submitted
-      ? `peserta/waiting.html?quiz=${quizId}`
-      : `peserta/quiz.html?quiz=${quizId}`;
+      ? `waiting.html?quiz=${quizId}`
+      : `quiz.html?quiz=${quizId}`;
   }
-  if (status === 'selesai') return `peserta/ranking.html?quiz=${quizId}`;
-  return 'peserta/home.html';
+  if (status === 'selesai') return `ranking.html?quiz=${quizId}`;
+  return 'home.html';
 }
 
 /**

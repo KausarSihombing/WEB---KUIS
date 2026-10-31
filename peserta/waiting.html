@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Menunggu Kuis Selesai — Kuis Bahasa C</title>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+  <div class="stage-page">
+    <div style="width:100%;max-width:520px">
+      <div class="rank-brand">
+        <a class="brand" href="home.html" style="text-decoration:none;color:inherit">
+          <span class="brand-mark">C</span>
+          <span class="brand-text">Kuis Bahasa C<small>Ruang Peserta</small></span>
+        </a>
+        <a class="btn btn-sm" href="home.html">Beranda</a>
+      </div>
+
+      <div class="stage-card" id="waitingCard">
+        <div class="loading-block"><span class="spinner"></span><span>Memeriksa status...</span></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script type="module">
+    import { requireAuth } from '../js/auth.js';
+    import { getQuizState } from '../js/quiz.js';
+    import { watchQuiz } from '../js/realtime.js';
+    import { $, toast, escapeHtml, formatDate } from '../js/ui.js';
+
+    const quizId = new URLSearchParams(location.search).get('quiz');
+    let poller = null;
+    let routed = false;
+
+    const profile = await requireAuth('peserta');
+    if (profile && quizId) init();
+    else if (profile) location.replace('home.html');
+
+    async function init() {
+      try {
+        const state = await getQuizState(quizId);
+        if (state.status === 'selesai') return goToRanking();
+        if (state.status === 'menunggu') return location.replace(`lobby.html?quiz=${quizId}`);
+        if (state.status === 'berjalan' && !state.participant?.submitted_at) {
+          return location.replace(`quiz.html?quiz=${quizId}`);
+        }
+
+        render(state);
+
+        watchQuiz(quizId, (row) => {
+          if (row.status === 'selesai') goToRanking();
+        }, () => toast('Realtime terputus, halaman akan menyegarkan otomatis.', 'info'));
+
+        poller = setInterval(async () => {
+          try {
+            const fresh = await getQuizState(quizId);
+            if (fresh.status === 'selesai') goToRanking();
+          } catch { /* abaikan */ }
+        }, 5000);
+      } catch (error) {
+        toast(error.message, 'error');
+        $('#waitingCard').innerHTML = `
+          <div class="stage-emoji">⚠️</div>
+          <h2>Status tidak tersedia</h2>
+          <p class="lead">${escapeHtml(error.message)}</p>
+          <a class="btn btn-primary btn-block mt-3" href="home.html">Kembali ke Beranda</a>`;
+      }
+    }
+
+    function render(state) {
+      $('#waitingCard').innerHTML = `
+        <div class="stage-emoji">✅</div>
+        <h2>Jawaban terkirim</h2>
+        <p class="lead">Menunggu instruktur mengakhiri kuis.</p>
+        <div class="pulse-dots"><i></i><i></i><i></i></div>
+
+        <div class="lobby-stats">
+          <div class="lobby-stat">
+            <strong>${state.answered_count}/${state.total_questions}</strong>
+            <span>Soal terisi</span>
+          </div>
+          <div class="lobby-stat">
+            <strong>${state.participant?.submitted_at ? 'Terkunci' : '—'}</strong>
+            <span>Status jawaban</span>
+          </div>
+        </div>
+
+        <div class="stage-note">
+          ${escapeHtml(state.title)}<br>
+          ${state.participant?.submitted_at ? `Dikumpulkan pada ${formatDate(state.participant.submitted_at)}.` : ''}
+          Nilai tidak ditampilkan kepada peserta. Saat kuis diakhiri, kamu akan diarahkan ke halaman peringkat.
+        </div>
+
+        <a class="btn btn-block mt-3" href="home.html">Kembali ke Beranda</a>
+      `;
+    }
+
+    function goToRanking() {
+      if (routed) return;
+      routed = true;
+      clearInterval(poller);
+      location.replace(`ranking.html?quiz=${quizId}`);
+    }
+
+    window.addEventListener('beforeunload', () => clearInterval(poller));
+  </script>
+</body>
+</html>

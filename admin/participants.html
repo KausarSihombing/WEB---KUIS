@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Peserta — Kuis Bahasa C</title>
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar" id="sidebar"></aside>
+    <div class="sidebar-overlay" id="sidebarOverlay"></div>
+    <div class="main">
+      <header class="topbar">
+        <button class="hamburger" id="sidebarToggle" aria-label="Buka menu"><span></span><span></span><span></span></button>
+        <div>
+          <h1 id="pageTitle">Peserta</h1>
+          <div class="sub" id="pageSub">Akun peserta dan riwayat kuis</div>
+        </div>
+        <div class="topbar-actions">
+          <input class="input" id="searchInput" type="search" placeholder="Cari nama / NIM..." style="width:210px" aria-label="Cari peserta">
+        </div>
+      </header>
+
+      <main class="content">
+        <div class="page-head">
+          <div>
+            <h2>Daftar Akun Peserta</h2>
+            <p>Nonaktifkan akun untuk mencegah login tanpa menghapus riwayat.</p>
+          </div>
+          <div class="page-actions">
+            <span class="badge" id="countBadge">0 peserta</span>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-body tight" id="pesertaList">
+            <div class="loading-block"><span class="spinner"></span><span>Memuat peserta...</span></div>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <div class="modal" id="historyModal">
+    <div class="modal-card wide">
+      <div class="modal-head">
+        <div><h3 id="historyTitle">Riwayat Kuis</h3><p>Riwayat peserta pada semua kuis</p></div>
+        <button class="modal-close" type="button" data-close aria-label="Tutup">&times;</button>
+      </div>
+      <div class="modal-body" id="historyBody">
+        <div class="loading-block"><span class="spinner"></span></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn" type="button" data-close>Tutup</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script type="module">
+    import { requireAuth } from '../js/auth.js';
+    import {
+      listPeserta, listPesertaHistory, setParticipantActive, deleteParticipantProfile,
+    } from '../js/admin.js';
+    import {
+      $, mountShell, toast, escapeHtml, formatDate, initials, statusBadge,
+      openModal, closeModal, emptyState, loadingState,
+    } from '../js/ui.js';
+
+    let peserta = [];
+    let keyword = '';
+    let activeHistoryUser = null;
+
+    const profile = await requireAuth('admin');
+    if (profile) {
+      mountShell({ profile, role: 'admin', active: 'participants', title: 'Peserta', subtitle: 'Akun peserta dan riwayat kuis' });
+      $('#searchInput').addEventListener('input', (event) => {
+        keyword = event.target.value.trim().toLowerCase();
+        renderList();
+      });
+      bindEvents();
+      await loadPeserta();
+    }
+
+    async function loadPeserta() {
+      try {
+        peserta = await listPeserta();
+        renderList();
+      } catch (error) {
+        toast(error.message, 'error');
+        $('#pesertaList').innerHTML = emptyState('⚠️', 'Gagal memuat peserta', error.message);
+      }
+    }
+
+    function filtered() {
+      if (!keyword) return peserta;
+      return peserta.filter((p) =>
+        (p.full_name ?? '').toLowerCase().includes(keyword) ||
+        (p.nim_kelas ?? '').toLowerCase().includes(keyword));
+    }
+
+    function renderList() {
+      const rows = filtered();
+      $('#countBadge').textContent = `${peserta.length} peserta`;
+
+      if (!peserta.length) {
+        $('#pesertaList').innerHTML = emptyState('👥', 'Belum ada peserta', 'Peserta yang mendaftar akan muncul di sini.');
+        return;
+      }
+
+      if (!rows.length) {
+        $('#pesertaList').innerHTML = emptyState('🔍', 'Tidak ditemukan', 'Coba kata kunci lain.');
+        return;
+      }
+
+      $('#pesertaList').innerHTML = `
+        <div class="table-wrap">
+          <table class="data">
+            <thead>
+              <tr><th>Peserta</th><th>Status</th><th>Terdaftar</th><th></th></tr>
+            </thead>
+            <tbody>
+              ${rows.map((p) => `
+                <tr>
+                  <td>
+                    <div class="flex-center">
+                      <div class="avatar" style="width:32px;height:32px;font-size:11px">${escapeHtml(initials(p.full_name))}</div>
+                      <div>
+                        <div class="name">${escapeHtml(p.full_name)}</div>
+                        <div class="sub">${escapeHtml(p.nim_kelas || 'NIM/kelas belum diisi')}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td><span class="badge ${p.is_active ? 'badge-berjalan' : 'badge-off'}">${p.is_active ? 'Aktif' : 'Nonaktif'}</span></td>
+                  <td class="sub nowrap">${formatDate(p.created_at, false)}</td>
+                  <td>
+                    <div class="actions">
+                      <button class="btn btn-sm" type="button" data-history="${p.id}">Riwayat</button>
+                      <button class="btn btn-sm ${p.is_active ? '' : 'btn-soft'}" type="button" data-active="${p.id}" data-value="${p.is_active}">
+                        ${p.is_active ? 'Nonaktifkan' : 'Aktifkan'}
+                      </button>
+                      <button class="btn-icon danger" type="button" data-delete="${p.id}" title="Hapus akun">✕</button>
+                    </div>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>`;
+    }
+
+    function bindEvents() {
+      $('#pesertaList').addEventListener('click', async (event) => {
+        const historyBtn = event.target.closest('[data-history]');
+        if (historyBtn) return openHistory(historyBtn.dataset.history);
+
+        const activeBtn = event.target.closest('[data-active]');
+        if (activeBtn) {
+          const user = peserta.find((p) => p.id === activeBtn.dataset.active);
+          if (!user) return;
+          const next = !(activeBtn.dataset.value === 'true');
+          if (!next && !confirm(`Nonaktifkan akun ${user.full_name}? Peserta tidak bisa login sampai diaktifkan kembali.`)) return;
+          try {
+            await setParticipantActive(user.id, next);
+            toast(next ? 'Akun diaktifkan.' : 'Akun dinonaktifkan.');
+            await loadPeserta();
+          } catch (error) {
+            toast(error.message, 'error');
+          }
+          return;
+        }
+
+        const deleteBtn = event.target.closest('[data-delete]');
+        if (deleteBtn) {
+          const user = peserta.find((p) => p.id === deleteBtn.dataset.delete);
+          if (!user) return;
+          if (!confirm(`Hapus profil ${user.full_name}? Seluruh riwayat kuisnya ikut terhapus dan akun tidak bisa dipakai lagi.`)) return;
+          try {
+            await deleteParticipantProfile(user.id);
+            toast('Profil peserta dihapus.');
+            await loadPeserta();
+          } catch (error) {
+            toast(error.message, 'error');
+          }
+        }
+      });
+    }
+
+    async function openHistory(userId) {
+      activeHistoryUser = peserta.find((p) => p.id === userId) ?? null;
+      $('#historyTitle').textContent = `Riwayat ${activeHistoryUser?.full_name ?? 'Peserta'}`;
+      $('#historyBody').innerHTML = loadingState('Memuat riwayat...');
+      openModal('historyModal');
+
+      try {
+        const rows = await listPesertaHistory(userId);
+        if (!rows.length) {
+          $('#historyBody').innerHTML = emptyState('🗂️', 'Belum ada riwayat', 'Peserta ini belum mengikuti kuis apa pun.');
+          return;
+        }
+
+        $('#historyBody').innerHTML = `
+          <div class="table-wrap">
+            <table class="data">
+              <thead><tr><th>Kuis</th><th>Status</th><th>Nilai</th><th>Peringkat</th><th>Diikuti</th></tr></thead>
+              <tbody>
+                ${rows.map((row) => `
+                  <tr>
+                    <td>
+                      <div class="name">${escapeHtml(row.quizzes?.title ?? 'Kuis dihapus')}</div>
+                      <div class="sub">${row.submitted_at ? `Dikumpulkan ${formatDate(row.submitted_at)}` : 'Belum mengumpulkan'}</div>
+                    </td>
+                    <td>${statusBadge(row.quizzes?.status)}</td>
+                    <td><strong>${row.quizzes?.status === 'selesai' ? row.score : '—'}</strong></td>
+                    <td class="sub">${row.rank ? `#${row.rank}` : '—'}</td>
+                    <td class="sub nowrap">${formatDate(row.joined_at)}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>`;
+      } catch (error) {
+        $('#historyBody').innerHTML = emptyState('⚠️', 'Gagal memuat riwayat', error.message);
+      }
+    }
+  </script>
+</body>
+</html>

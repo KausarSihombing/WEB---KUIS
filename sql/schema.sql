@@ -133,6 +133,27 @@ $$;
 
 grant execute on function public.is_admin() to authenticated;
 
+-- Cek kepemilikan partisipasi TANPA terkena RLS tabel participants.
+-- Dipakai policy SELECT pada tabel answers.
+create or replace function public.owns_participant(p_participant_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.participants p
+    join public.quizzes q on q.id = p.quiz_id
+    where p.id = p_participant_id
+      and p.user_id = auth.uid()
+      and q.status = 'berjalan'
+  );
+$$;
+
+grant execute on function public.owns_participant(uuid) to authenticated;
+
 -- Buat profil otomatis ketika user baru mendaftar.
 -- Registrasi publik SELALU menjadi 'peserta' (role di-hardcode).
 create or replace function public.handle_new_user()
@@ -221,10 +242,13 @@ create policy tokens_admin_all on public.tokens
   with check (public.is_admin());
 
 -- ---------- participants ----------
+-- Peserta TIDAK membaca tabel ini langsung (score/correct/wrong sensitif).
+-- Mereka memakai RPC get_my_participations di bawah.
 drop policy if exists participants_select_own_or_admin on public.participants;
-create policy participants_select_own_or_admin on public.participants
+drop policy if exists participants_select_admin on public.participants;
+create policy participants_select_admin on public.participants
   for select to authenticated
-  using (user_id = auth.uid() or public.is_admin());
+  using (public.is_admin());
 
 drop policy if exists participants_admin_write on public.participants;
 create policy participants_admin_write on public.participants
@@ -243,19 +267,7 @@ create policy participants_admin_delete on public.participants
 drop policy if exists answers_select_own_or_admin on public.answers;
 create policy answers_select_own_or_admin on public.answers
   for select to authenticated
-  using (
-    public.is_admin()
-    or (
-      exists (
-        select 1
-        from public.participants p
-        join public.quizzes q on q.id = p.quiz_id
-        where p.id = answers.participant_id
-          and p.user_id = auth.uid()
-          and q.status = 'berjalan'
-      )
-    )
-  );
+  using (public.is_admin() or public.owns_participant(participant_id));
 
 -- ---------- materials ----------
 drop policy if exists materials_select on public.materials;
@@ -297,6 +309,26 @@ where z.status = 'berjalan'
 
 revoke all on public.questions_public from anon;
 grant select on public.questions_public to authenticated;
+
+-- Data partisipasi milik sendiri TANPA score/benar/salah (dipakai beranda peserta).
+create or replace function public.get_my_participations()
+returns table (
+  id uuid,
+  quiz_id uuid,
+  joined_at timestamptz,
+  submitted_at timestamptz,
+  rank integer
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select p.id, p.quiz_id, p.joined_at, p.submitted_at, p.rank
+  from public.participants p
+  where p.user_id = auth.uid()
+  order by p.joined_at desc;
+$$;
 
 -- =====================================================================
 --  6. RPC — ALUR PESERTA
@@ -411,6 +443,10 @@ begin
     return jsonb_build_object('ok', false, 'error', 'Sesi login tidak ditemukan.');
   end if;
 
+  if not exists (select 1 from public.profiles where id = v_uid and is_active) then
+    return jsonb_build_object('ok', false, 'error', 'Akun kamu tidak aktif. Hubungi instruktur.');
+  end if;
+
   if v_ans not in ('A', 'B', 'C', 'D') then
     return jsonb_build_object('ok', false, 'error', 'Pilihan jawaban tidak valid.');
   end if;
@@ -462,9 +498,14 @@ as $$
 declare
   v_uid  uuid := auth.uid();
   v_part public.participants%rowtype;
+  v_quiz public.quizzes%rowtype;
 begin
   if v_uid is null then
     return jsonb_build_object('ok', false, 'error', 'Sesi login tidak ditemukan.');
+  end if;
+
+  if not exists (select 1 from public.profiles where id = v_uid and is_active) then
+    return jsonb_build_object('ok', false, 'error', 'Akun kamu tidak aktif. Hubungi instruktur.');
   end if;
 
   select * into v_part
@@ -473,6 +514,11 @@ begin
 
   if not found then
     return jsonb_build_object('ok', false, 'error', 'Kamu belum terdaftar pada kuis ini.');
+  end if;
+
+  select * into v_quiz from public.quizzes where id = p_quiz_id;
+  if not found or v_quiz.status <> 'berjalan' then
+    return jsonb_build_object('ok', false, 'error', 'Kuis belum dimulai atau sudah berakhir.');
   end if;
 
   update public.participants
@@ -564,6 +610,13 @@ begin
     return jsonb_build_object('ok', false, 'error', 'Kuis tidak ditemukan.');
   end if;
 
+  if not public.is_admin() and not exists (
+    select 1 from public.participants
+    where quiz_id = p_quiz_id and user_id = auth.uid()
+  ) then
+    return jsonb_build_object('ok', false, 'error', 'Kamu belum terdaftar pada kuis ini.');
+  end if;
+
   select count(*) into v_count from public.participants where quiz_id = p_quiz_id;
 
   return jsonb_build_object(
@@ -595,6 +648,13 @@ begin
     select 1 from public.quizzes where id = p_quiz_id and status = 'selesai'
   ) then
     raise exception 'Peringkat belum tersedia. Kuis belum diakhiri instruktur.';
+  end if;
+
+  if not public.is_admin() and not exists (
+    select 1 from public.participants
+    where quiz_id = p_quiz_id and user_id = auth.uid()
+  ) then
+    raise exception 'Kamu tidak terdaftar pada kuis ini.';
   end if;
 
   return query
@@ -853,6 +913,8 @@ revoke execute on function public.join_quiz_with_token(text) from public, anon;
 revoke execute on function public.save_answer(uuid, uuid, text) from public, anon;
 revoke execute on function public.submit_participant(uuid) from public, anon;
 revoke execute on function public.get_quiz_state(uuid) from public, anon;
+revoke execute on function public.owns_participant(uuid) from public, anon;
+revoke execute on function public.get_my_participations() from public, anon;
 revoke execute on function public.get_lobby_info(uuid) from public, anon;
 revoke execute on function public.get_public_ranking(uuid) from public, anon;
 revoke execute on function public.start_quiz(uuid) from public, anon;
@@ -864,6 +926,7 @@ grant execute on function public.join_quiz_with_token(text) to authenticated;
 grant execute on function public.save_answer(uuid, uuid, text) to authenticated;
 grant execute on function public.submit_participant(uuid) to authenticated;
 grant execute on function public.get_quiz_state(uuid) to authenticated;
+grant execute on function public.get_my_participations() to authenticated;
 grant execute on function public.get_lobby_info(uuid) to authenticated;
 grant execute on function public.get_public_ranking(uuid) to authenticated;
 grant execute on function public.start_quiz(uuid) to authenticated;
